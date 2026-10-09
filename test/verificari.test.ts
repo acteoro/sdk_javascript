@@ -12,7 +12,7 @@ import {
 	VerificRca,
 	VerificRcaError,
 } from "../src/index.js"
-import { CHEIE, VIN, cerere, client, fetchSimulat, rezultatValid } from "./helpers.js"
+import { CHEIE, SERIE_TALON, VIN, cerere, client, fetchSimulat, rezultatValid } from "./helpers.js"
 
 const headereCota = {
 	"X-RateLimit-Limit-Day": "300",
@@ -84,6 +84,34 @@ describe("verificari.porneste", () => {
 			serieSasiu: VIN,
 			callbackUrl: "https://example.com/hook/secret",
 		})
+	})
+
+	it("rovinieta trimite serieTalon la POST, dar nu si la polling", async () => {
+		const fetch = fetchSimulat(
+			{
+				status: 202,
+				body: { tip: "rovinieta", query: "B123ABC", status: "processing" },
+			},
+			{ body: { ...rezultatValid, tip: "rovinieta", serieSasiu: VIN } },
+		)
+		const final = await client(fetch).verificari.verificaSiAsteapta(
+			{ tip: "rovinieta", query: "B123ABC", serieSasiu: VIN, serieTalon: "i00639603f" },
+			{ intervalMs: 1 },
+		)
+		expect(final.status).toBe("valid")
+		expect(cerere(fetch).body).toEqual({ tip: "rovinieta", query: "B123ABC", serieSasiu: VIN, serieTalon: SERIE_TALON })
+		expect(cerere(fetch, 1).url.searchParams.has("serieTalon")).toBe(false)
+		expect(cerere(fetch, 1).url.searchParams.get("serieSasiu")).toBe(VIN)
+	})
+
+	it("rovinieta fara serieTalon e respinsa local", async () => {
+		const fetch = fetchSimulat()
+		const err = await client(fetch)
+			.verificari.porneste({ tip: "rovinieta", query: "B123ABC", serieSasiu: VIN })
+			.catch((e: unknown) => e)
+		expect(err).toBeInstanceOf(EroareValidare)
+		expect(err).toMatchObject({ camp: "serieTalon" })
+		expect(fetch).not.toHaveBeenCalled()
 	})
 
 	it("validarea locala nu trimite nicio cerere", async () => {
@@ -174,7 +202,28 @@ describe("verificari.rezultat", () => {
 		const fetch = fetchSimulat({
 			body: { tip: "rca", query: "B123ABC", status: "error", error: "Verificarea nu s-a putut finaliza." },
 		})
-		await expect(client(fetch).verificari.rezultat({ tip: "rca", query: "B123ABC" })).rejects.toBeInstanceOf(EroareVerificare)
+		const err = await client(fetch).verificari.rezultat({ tip: "rca", query: "B123ABC" }).catch((e: unknown) => e)
+		expect(err).toBeInstanceOf(EroareVerificare)
+		expect(err).toMatchObject({ cod: "VERIFICARE_ESUATA" })
+		expect((err as EroareVerificare).codSursa).toBeUndefined()
+	})
+
+	it("refuzul sursei ajunge in codSursa", async () => {
+		const fetch = fetchSimulat({
+			body: {
+				tip: "rovinieta",
+				query: "B123ABC",
+				status: "error",
+				error: "Numarul certificatului de inmatriculare pare gresit.",
+				cod: "serie_talon_invalida",
+			},
+		})
+		const err = await client(fetch)
+			.verificari.porneste({ tip: "rovinieta", query: "B123ABC", serieSasiu: VIN, serieTalon: SERIE_TALON })
+			.catch((e: unknown) => e)
+		expect(err).toBeInstanceOf(EroareVerificare)
+		expect(err).toMatchObject({ cod: "VERIFICARE_ESUATA", codSursa: "serie_talon_invalida" })
+		expect(fetch).toHaveBeenCalledTimes(1)
 	})
 
 	it("timeout per cerere devine EroareRetea cu timeout: true", async () => {

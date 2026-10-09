@@ -55,11 +55,24 @@ export const InCursSchema = Schema.Struct({
 	hint: Schema.optional(Schema.String),
 })
 
+/**
+ * Codurile cu care sursa oficiala refuza datele trimise. O reincercare cu
+ * aceleasi date nu ajuta; trebuie corectat campul indicat:
+ * - `serie_talon_invalida`: numarul certificatului de inmatriculare (talon);
+ * - `vin_invalid`: seria de sasiu;
+ * - `numar_invalid`: numarul de inmatriculare.
+ *
+ * Tipul accepta si alte valori, pentru coduri adaugate ulterior de API.
+ */
+export type CodRefuzSursa = "serie_talon_invalida" | "vin_invalid" | "numar_invalid" | (string & {})
+
 export const EsuataSchema = Schema.Struct({
 	tip: TipVerificare,
 	query: Schema.String,
 	status: Schema.Literal("error"),
 	error: Schema.String,
+	/** Doar cand sursa a refuzat datele trimise. Vezi {@link CodRefuzSursa}. */
+	cod: Schema.optional(Schema.String),
 	hint: Schema.optional(Schema.String),
 })
 
@@ -86,11 +99,15 @@ export const VehiculSchema = Schema.Struct({
 	numarInmatriculare: Schema.NullOr(Schema.String),
 	/** Seria de sasiu (VIN), `null` daca vehiculul a fost adaugat doar cu numarul. */
 	serieSasiu: Schema.NullOr(Schema.String),
+	/** Numarul certificatului de inmatriculare (talon). Fara el rovinieta nu se verifica. */
+	serieTalon: Schema.optionalWith(Schema.NullOr(Schema.String), { default: () => null }),
+	/** Sursa oficiala a respins numarul talonului; rovinieta nu se mai verifica pana la corectarea lui. */
+	serieTalonRespinsa: Schema.optionalWith(Schema.Boolean, { default: () => false }),
 	/** Data expirarii RCA, `null` daca nu e cunoscuta inca. */
 	rcaExpiraLa: DataNullabila,
 	/** Data expirarii ITP, `null` daca nu e cunoscuta inca (ITP-ul cere VIN). */
 	itpExpiraLa: DataNullabila,
-	/** Data expirarii rovinietei, `null` daca nu e cunoscuta inca (rovinieta cere numar si VIN). */
+	/** Data expirarii rovinietei, `null` daca nu e cunoscuta inca (rovinieta cere numar, VIN si numarul talonului). */
 	rovinietaExpiraLa: DataNullabila,
 	/** Data expirarii copiei conforme ARR. Completata doar cand `arrMonitorizat` e `true`. */
 	arrExpiraLa: DataNullabila,

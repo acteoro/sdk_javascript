@@ -7,7 +7,7 @@ import type { Vehicul } from "./schemas.js"
 import type { CerereVerificare, VehiculNou } from "./validare.js"
 
 /** Versiunea acestui SDK, trimisa si in headerul `User-Agent`. */
-export const VERSIUNE_SDK = "0.1.0"
+export const VERSIUNE_SDK = "0.2.0"
 /** Adresa implicita a API-ului. */
 export const URL_IMPLICIT = "https://www.verificrca.ro"
 
@@ -114,14 +114,16 @@ export class ClientVerificari {
 	 * Datele sunt validate local inainte de cerere: o greseala de tastare nu
 	 * pleaca pe retea si nu consuma din cota.
 	 *
-	 * @param cerere tipul verificarii, identificatorul si, optional, VIN-ul si `callbackUrl`.
+	 * @param cerere tipul verificarii, identificatorul, VIN-ul (obligatoriu la rovinieta,
+	 *   impreuna cu `serieTalon`) si, optional, `callbackUrl`.
 	 * @param optiuni `signal` pentru anulare.
 	 * @returns rezultatul final sau o {@link VerificareInCurs}.
 	 * @throws {@link EroareValidare} date invalide, local sau HTTP 400.
 	 * @throws {@link EroareAutentificare} cheie API invalida (401).
 	 * @throws {@link EroarePlanInactiv} contul nu are abonament API activ (402).
 	 * @throws {@link EroareLimita} cota zilnica sau lunara atinsa (429, `cod: "COTA_ATINSA"`).
-	 * @throws {@link EroareVerificare} sursa oficiala nu a putut fi interogata.
+	 * @throws {@link EroareVerificare} sursa oficiala nu a putut fi interogata sau a
+	 *   refuzat datele trimise (`codSursa`, ex: `"serie_talon_invalida"`).
 	 * @throws {@link EroareRetea} fara raspuns sau timeout.
 	 * @throws {@link EroareServer} eroare 5xx.
 	 * @example
@@ -182,19 +184,22 @@ export class ClientVerificari {
 	 * Porneste verificarea si asteapta rezultatul final, intr-un singur apel.
 	 * Consuma o unitate din cota (doar pornirea; pollingul e gratuit).
 	 *
-	 * @param cerere tipul verificarii, identificatorul si, optional, VIN-ul si `callbackUrl`.
+	 * @param cerere tipul verificarii, identificatorul, VIN-ul (obligatoriu la rovinieta,
+	 *   impreuna cu `serieTalon`) si, optional, `callbackUrl`.
 	 * @param optiuni `intervalMs`, `timeoutMs` si `signal`, ca la {@link ClientVerificari.asteapta}.
 	 * @returns rezultatul final al verificarii.
 	 * @throws {@link EroareValidare} date invalide, local sau HTTP 400.
 	 * @throws {@link EroareLimita} cota atinsa (`cod: "COTA_ATINSA"`).
 	 * @throws {@link EroareTimeoutVerificare} rezultatul nu a venit in `timeoutMs`.
-	 * @throws {@link EroareVerificare} sursa oficiala nu a putut fi interogata.
+	 * @throws {@link EroareVerificare} sursa oficiala nu a putut fi interogata sau a
+	 *   refuzat datele trimise (`codSursa`, ex: `"serie_talon_invalida"`).
 	 * @throws {@link VerificRcaError} orice alta eroare de la API sau de retea.
 	 * @example
 	 * const rovinieta = await vrca.verificari.verificaSiAsteapta({
 	 *   tip: "rovinieta",
 	 *   query: "B123ABC",
 	 *   serieSasiu: "WVWZZZ1JZXW000001",
+	 *   serieTalon: "I00639603F",
 	 * })
 	 * console.log(rovinieta.status, rovinieta.expiresAt)
 	 */
@@ -242,19 +247,24 @@ export class ClientVehicule {
 
 	/**
 	 * Adauga un vehicul in monitorizare. Trimite cel putin numarul de
-	 * inmatriculare sau seria de sasiu; cu amandoua se pot urmari toate
-	 * documentele (ITP-ul si rovinieta cer VIN).
+	 * inmatriculare sau seria de sasiu. ITP-ul cere VIN, iar rovinieta cere
+	 * numarul, VIN-ul si `serieTalon` (numarul certificatului de inmatriculare);
+	 * fara `serieTalon`, rovinieta nu se verifica.
 	 *
-	 * @param vehicul numarul, VIN-ul si, optional, `arrMonitorizat`.
+	 * @param vehicul numarul, VIN-ul si, optional, `serieTalon` si `arrMonitorizat`.
 	 * @param optiuni `signal` pentru anulare.
 	 * @returns vehiculul creat, cu `id`-ul folosit la stergere.
-	 * @throws {@link EroareValidare} lipseste identificatorul sau are caractere nepermise.
+	 * @throws {@link EroareValidare} lipseste identificatorul, are caractere nepermise sau `serieTalon` e invalida.
 	 * @throws {@link EroareInterzis} `LIMIT_ATINS` (ai atins numarul de masini din plan, vezi `limita`) sau `ARR_NECESITA_PLAN`.
 	 * @throws {@link EroareConflict} vehiculul exista deja in cont (`VEHICUL_EXISTENT`).
 	 * @throws {@link EroareLimita} plafonul zilnic de adaugari prin API (`LIMITA_FLOTA_ATINSA`).
 	 * @throws {@link EroarePlanInactiv} contul nu are un plan activ (402).
 	 * @example
-	 * const v = await vrca.vehicule.adauga({ numarInmatriculare: "B123ABC", serieSasiu: "WVWZZZ1JZXW000001" })
+	 * const v = await vrca.vehicule.adauga({
+	 *   numarInmatriculare: "B123ABC",
+	 *   serieSasiu: "WVWZZZ1JZXW000001",
+	 *   serieTalon: "I00639603F",
+	 * })
 	 * console.log(v.id)
 	 */
 	adauga(vehicul: VehiculNou, optiuni?: OptiuniCerere): Promise<Vehicul> {

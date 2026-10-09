@@ -99,12 +99,31 @@ console.log(`ITP valabil până la ${itp.expiresAt?.toLocaleDateString("ro-RO")}
 
 ### Verificare rovinietă
 
+Rovinieta cere trei date: numărul de înmatriculare, seria de șasiu (VIN) și numărul certificatului de înmatriculare (`serieTalon`), tipărit jos pe talon. Sursa oficială le validează pe toate trei împreună.
+
 ```ts
 const rovinieta = await vrca.verificari.verificaSiAsteapta({
 	tip: "rovinieta",
 	query: "B123ABC",
 	serieSasiu: "WVWZZZ1JZXW000001",
+	serieTalon: "I00639603F",
 })
+console.log(rovinieta.status, rovinieta.expiresAt)
+```
+
+Dacă sursa respinge datele (de exemplu, numărul talonului nu corespunde mașinii), primești `EroareVerificare` cu `codSursa: "serie_talon_invalida"`. O reîncercare cu aceleași date nu ajută; corectează întâi câmpul indicat:
+
+```ts
+import { EroareVerificare } from "@verificrca/sdk"
+
+try {
+	await vrca.verificari.verificaSiAsteapta({ tip: "rovinieta", query: "B123ABC", serieSasiu: vin, serieTalon: talon })
+} catch (err) {
+	if (err instanceof EroareVerificare && err.codSursa === "serie_talon_invalida") {
+		return cereUtilizatoruluiNumarulTalonului()
+	}
+	throw err
+}
 ```
 
 ### Verificare copie conformă ARR
@@ -117,14 +136,16 @@ const arr = await vrca.verificari.verificaSiAsteapta({ tip: "arr", query: "CJ45X
 
 Fiecare sursă oficială caută după alt identificator. SDK-ul aplică aceleași reguli ca API-ul și te oprește înainte de cerere dacă lipsește ceva.
 
-| `tip` | `query` | `serieSasiu` | Sursa |
-|---|---|---|---|
-| `rca` | număr de înmatriculare **sau** VIN | opțional, recomandat | AIDA / BAAR |
-| `itp` | VIN (17 caractere) | nu | RAR |
-| `rovinieta` | număr de înmatriculare | **obligatoriu** | CNAIR |
-| `arr` | număr de înmatriculare | nu | ARR |
+| `tip` | `query` | `serieSasiu` | `serieTalon` | Sursa |
+|---|---|---|---|---|
+| `rca` | număr de înmatriculare **sau** VIN | opțional, recomandat | nu | AIDA / BAAR |
+| `itp` | VIN (17 caractere) | nu | nu | RAR |
+| `rovinieta` | număr de înmatriculare | **obligatoriu** | **obligatoriu** | CNAIR |
+| `arr` | număr de înmatriculare | nu | nu | ARR |
 
 Formatele de număr acceptate: București (`B123ABC`, `B12ABC`), județe (`CJ45XYZ`, `IS08BCD`), corp diplomatic (`CD123A`) și numere temporare (`TC1234AB`). Spațiile și cratimele sunt eliminate automat, deci `b-123 abc` devine `B123ABC`. VIN-ul trebuie să aibă exact 17 caractere, fără literele I, O și Q (standardul ISO 3779).
+
+`serieTalon` este numărul certificatului de înmatriculare, de forma `I00639603F`. SDK-ul păstrează doar literele și cifrele, cu majuscule, și cere între 6 și 20 de caractere, cu cel puțin o cifră. Doar sursa oficială poate confirma că numărul aparține mașinii. La celelalte tipuri de verificare câmpul e ignorat.
 
 ## Cum decurge o verificare
 
@@ -147,7 +168,13 @@ Doar pasul 1 consumă din cota planului. Interogările de rezultat sunt gratuite
 | `not_found` | Sursa nu a găsit vehiculul | `null` |
 | `processing` | Verificarea e încă în curs | nu există |
 
-Când sursa oficială nu răspunde, SDK-ul aruncă `EroareVerificare` și poți relua cererea.
+Când verificarea se încheie cu eroare, SDK-ul aruncă `EroareVerificare`. Dacă sursa oficială doar nu a răspuns, `codSursa` lipsește și poți relua cererea. Dacă sursa a refuzat datele trimise, `codSursa` spune ce e greșit și reîncercarea nu ajută până nu corectezi câmpul:
+
+| `codSursa` | Câmpul de corectat |
+|---|---|
+| `serie_talon_invalida` | `serieTalon`, numărul certificatului de înmatriculare |
+| `vin_invalid` | `serieSasiu` |
+| `numar_invalid` | numărul de înmatriculare |
 
 ## Referință API
 
@@ -185,7 +212,7 @@ if (r.status === "processing") {
 
 ### `verificari.rezultat(referinta)`
 
-Interoghează o singură dată. Nu consumă din cotă. Primește obiectul întors de `porneste()` sau `{ tip, query, serieSasiu?, since? }`.
+Interoghează o singură dată. Nu consumă din cotă. Primește obiectul întors de `porneste()` sau `{ tip, query, serieSasiu?, since? }`. Numărul talonului nu e necesar la interogarea rezultatului.
 
 ### `verificari.asteapta(referinta, optiuni?)`
 
@@ -197,11 +224,20 @@ Face polling până la rezultatul final. Opțiuni: `intervalMs` (implicit 3000, 
 
 ### `vehicule.lista()`
 
-Toate vehiculele din cont, cu datele de expirare `rcaExpiraLa`, `itpExpiraLa`, `rovinietaExpiraLa` și `arrExpiraLa` (ca `Date` sau `null`). Câmpul `activ` e `true` cât timp vehiculul e verificat automat și primește notificări de expirare. Vehiculele din cont sunt verificate automat și periodic, deci lista îți dă o imagine la zi a flotei fără să consume din cota de verificări.
+Toate vehiculele din cont, cu datele de expirare `rcaExpiraLa`, `itpExpiraLa`, `rovinietaExpiraLa` și `arrExpiraLa` (ca `Date` sau `null`). Câmpul `activ` e `true` cât timp vehiculul e verificat automat și primește notificări de expirare. `serieTalon` e numărul certificatului de înmatriculare (sau `null`), iar `serieTalonRespinsa` devine `true` când sursa oficială l-a respins; rovinieta nu se mai verifică până nu e corectat. Vehiculele din cont sunt verificate automat și periodic, deci lista îți dă o imagine la zi a flotei fără să consume din cota de verificări.
 
-### `vehicule.adauga({ numarInmatriculare?, serieSasiu?, arrMonitorizat? })`
+### `vehicule.adauga({ numarInmatriculare?, serieSasiu?, serieTalon?, arrMonitorizat? })`
 
-Adaugă un vehicul în monitorizare. Trimite cel puțin un identificator. Poți primi `EroareInterzis` cu `cod: "LIMIT_ATINS"` când ai atins numărul de mașini din plan, sau `EroareConflict` când vehiculul există deja.
+Adaugă un vehicul în monitorizare. Trimite cel puțin un identificator. ITP-ul se monitorizează doar cu VIN, iar rovinieta cere numărul, VIN-ul și `serieTalon`; fără numărul talonului, rovinieta nu se verifică.
+
+```ts
+const v = await vrca.vehicule.adauga({
+	numarInmatriculare: "B123ABC",
+	serieSasiu: "WVWZZZ1JZXW000001",
+	serieTalon: "I00639603F",
+})
+```
+ Poți primi `EroareInterzis` cu `cod: "LIMIT_ATINS"` când ai atins numărul de mașini din plan, sau `EroareConflict` când vehiculul există deja.
 
 ### `vehicule.sterge(id)`
 
@@ -212,11 +248,19 @@ Operațiile pe vehicule nu consumă din cota de verificări, dar cer un plan act
 ### Utilitare de validare
 
 ```ts
-import { esteNumarInmatriculareValid, esteVinValid, normalizeaza } from "@verificrca/sdk"
+import {
+	esteNumarInmatriculareValid,
+	esteSerieTalonValida,
+	esteVinValid,
+	normalizeaza,
+	normalizeazaSerieTalon,
+} from "@verificrca/sdk"
 
 esteNumarInmatriculareValid("CJ 45 XYZ") // true
 esteVinValid("WVWZZZ1JZXW00000I")        // false: litera I nu e permisă în VIN
+esteSerieTalonValida("I00639603F")       // true
 normalizeaza(" b-123 abc ")              // "B123ABC"
+normalizeazaSerieTalon("i 00639603-f")   // "I00639603F"
 ```
 
 Le poți folosi pentru formularele tale, ca să validezi datele înainte să ajungă la server.
@@ -294,7 +338,7 @@ Toate erorile moștenesc `VerificRcaError`, care la rândul ei moștenește `Err
 | `EroareServer` | 5xx | `status` |
 | `EroareRetea` | Fără răspuns sau timeout | `timeout`, `neajunsa` |
 | `EroareRaspunsInvalid` | Răspuns cu formă neașteptată | `raspuns` |
-| `EroareVerificare` | Sursa oficială nu a putut fi interogată | |
+| `EroareVerificare` | Sursa oficială nu a putut fi interogată sau a refuzat datele | `codSursa` |
 | `EroareTimeoutVerificare` | `asteapta()` a depășit `timeoutMs` | |
 | `EroareWebhook` | Cheie greșită sau payload invalid | `cod` |
 
@@ -376,6 +420,14 @@ Instalezi `@verificrca/sdk`, creezi un client cu cheia API și apelezi `verifica
 ### Pot verifica ITP-ul după numărul de înmatriculare?
 
 Nu. RAR caută inspecția tehnică periodică doar după seria de șasiu (VIN), așa că SDK-ul respinge cererea înainte să plece, fără să consume din cotă. VIN-ul îl găsești în talon, la rubrica E.
+
+### Unde găsesc numărul certificatului de înmatriculare?
+
+Pe talon (certificatul de înmatriculare), jos, la rubrica „Numărul certificatului”. Conține litere și cifre, de exemplu `I00639603F`. Nu îl confunda cu seria de șasiu (VIN), care e la rubrica E și are 17 caractere. SDK-ul acceptă numărul și cu spații sau cu litere mici și îl aduce singur la forma corectă.
+
+### De ce verificarea rovinietei cere numărul talonului?
+
+Pentru că așa cere sursa oficială: interogarea rovinietei validează împreună numărul de înmatriculare, VIN-ul și numărul certificatului de înmatriculare. Fără el, cererea e respinsă înainte să plece, fără să consume din cotă. Pentru vehiculele din cont, adaugă `serieTalon` la `vehicule.adauga()`, altfel rovinieta lor nu se monitorizează.
 
 ### De unde vin datele?
 

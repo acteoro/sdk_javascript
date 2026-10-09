@@ -126,7 +126,13 @@ const interpreteaza = (
 			const limite = limiteDin(raspuns)
 			if (corp.status === "error") {
 				return Effect.fail(
-					new EroareVerificare({ message: corp.error, cod: "VERIFICARE_ESUATA", raspuns: corp, ...(corp.hint && { hint: corp.hint }) }),
+					new EroareVerificare({
+						message: corp.error,
+						cod: "VERIFICARE_ESUATA",
+						raspuns: corp,
+						...(corp.cod && { codSursa: corp.cod }),
+						...(corp.hint && { hint: corp.hint }),
+					}),
 				)
 			}
 			if (corp.status === "processing") {
@@ -162,6 +168,7 @@ export const porneste = (
 				tip: tinta.tip,
 				query: tinta.query,
 				...(tinta.serieSasiu && { serieSasiu: tinta.serieSasiu }),
+				...(tinta.serieTalon && { serieTalon: tinta.serieTalon }),
 				...(tinta.callbackUrl && { callbackUrl: tinta.callbackUrl }),
 			},
 		})

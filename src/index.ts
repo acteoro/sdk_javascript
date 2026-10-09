@@ -36,6 +36,7 @@ export {
 export type { DateEroare, EroareCerere } from "./errors.js"
 
 export type {
+	CodRefuzSursa,
 	StatusDocument,
 	TipVerificare,
 	Vehicul,
@@ -47,8 +48,10 @@ export type {
 
 export {
 	esteNumarInmatriculareValid,
+	esteSerieTalonValida,
 	esteVinValid,
 	normalizeaza,
+	normalizeazaSerieTalon,
 	TIPURI_VERIFICARE,
 } from "./validare.js"
 export type { CerereVerificare, VehiculNou } from "./validare.js"
