@@ -1,6 +1,6 @@
 # Changelog
 
-## @acteo/api 0.1.0 (2026-10-28)
+## @acteo/api 0.3.0 (2026-10-29)
 
 Pachetul `@verificrca/sdk` continuă sub numele `@acteo/api`, cu apelurile grupate pe domeniu și pe document. Vezi secțiunea „Vii de la @verificrca/sdk?” din README.
 
