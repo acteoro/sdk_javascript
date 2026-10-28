@@ -7,18 +7,20 @@ import type { Vehicul } from "./schemas.js"
 import type { CerereVerificare, VehiculNou } from "./validare.js"
 
 /** Versiunea acestui SDK, trimisa si in headerul `User-Agent`. */
-export const VERSIUNE_SDK = "0.2.0"
-/** Adresa implicita a API-ului. */
-export const URL_IMPLICIT = "https://www.verificrca.ro"
+export const VERSIUNE_SDK = "0.1.0"
+/** Adresa implicita a API-ului pentru clientul {@link Acteo}. */
+export const URL_IMPLICIT = "https://api.acteo.ro"
+/** Adresa implicita a clientului legacy {@link VerificRca}. */
+export const URL_IMPLICIT_LEGACY = "https://www.verificrca.ro"
 
-/** Optiunile constructorului {@link VerificRca}. Toate sunt optionale. */
+/** Optiunile constructorului {@link Acteo}. Toate sunt optionale. */
 export interface OptiuniClient {
 	/**
-	 * Cheia API (`vrca_...`) din https://www.verificrca.ro/dashboard/api.
-	 * Implicit se citeste din variabila de mediu `VERIFICRCA_API_KEY`.
+	 * Cheia API. Implicit se citeste din variabila de mediu `ACTEO_API_KEY`
+	 * (sau `VERIFICRCA_API_KEY`, daca prima lipseste).
 	 */
 	readonly apiKey?: string
-	/** Adresa API-ului. Implicit `https://www.verificrca.ro`; schimb-o doar pentru medii de test. */
+	/** Adresa API-ului. Implicit `https://api.acteo.ro`; schimb-o doar pentru medii de test. */
 	readonly baseUrl?: string
 	/** Timeout per cerere HTTP. Implicit 30000 ms. */
 	readonly timeoutMs?: number
@@ -47,19 +49,46 @@ function citesteEnv(nume: string): string | undefined {
 	return proces?.env?.[nume]
 }
 
-function construiesteSetari(optiuni: OptiuniClient): SetariClient {
-	const apiKey = (optiuni.apiKey ?? citesteEnv("VERIFICRCA_API_KEY") ?? "").trim()
+/** @internal Ce difera intre clientul {@link Acteo} si cel legacy {@link VerificRca}. */
+export interface ProfilClient {
+	readonly urlImplicit: string
+	/** Variabilele de mediu citite pentru cheie, in ordine. */
+	readonly variabileCheie: readonly string[]
+	/** Prefixul din `User-Agent`. */
+	readonly agent: string
+	/** Unde se genereaza cheia, aratat cand lipseste. */
+	readonly undeCheie: string
+}
+
+/** @internal */
+export const PROFIL_ACTEO: ProfilClient = {
+	urlImplicit: URL_IMPLICIT,
+	variabileCheie: ["ACTEO_API_KEY", "VERIFICRCA_API_KEY"],
+	agent: "acteo-sdk-js",
+	undeCheie: "https://www.verificrca.ro/dashboard/api",
+}
+
+const PROFIL_LEGACY: ProfilClient = {
+	urlImplicit: URL_IMPLICIT_LEGACY,
+	variabileCheie: ["VERIFICRCA_API_KEY"],
+	agent: "verificrca-sdk-js",
+	undeCheie: "https://www.verificrca.ro/dashboard/api",
+}
+
+function construiesteSetari(optiuni: OptiuniClient, profil: ProfilClient): SetariClient {
+	const dinEnv = profil.variabileCheie.map(citesteEnv).find((v) => v?.trim())
+	const apiKey = (optiuni.apiKey ?? dinEnv ?? "").trim()
 	if (!apiKey) {
 		throw new EroareConfigurare({
-			message: "Lipseste cheia API. Trimite `apiKey` sau seteaza variabila de mediu VERIFICRCA_API_KEY.",
-			hint: "Cheia se genereaza din https://www.verificrca.ro/dashboard/api",
+			message: `Lipseste cheia API. Trimite \`apiKey\` sau seteaza variabila de mediu ${profil.variabileCheie[0]}.`,
+			hint: `Cheia se genereaza din ${profil.undeCheie}`,
 		})
 	}
 	if (apiKey.length < 16 || apiKey.length > 128) {
 		throw new EroareConfigurare({ message: "Cheia API are un format invalid (intre 16 si 128 de caractere)." })
 	}
 
-	const baseUrl = optiuni.baseUrl ?? URL_IMPLICIT
+	const baseUrl = optiuni.baseUrl ?? profil.urlImplicit
 	try {
 		new URL(baseUrl)
 	} catch {
@@ -80,12 +109,29 @@ function construiesteSetari(optiuni: OptiuniClient): SetariClient {
 		timeoutMs,
 		retry: optiuni.retry === false ? null : { ...RETRY_IMPLICIT, ...optiuni.retry },
 		fetch: fetchImpl,
-		userAgent: `verificrca-sdk-js/${VERSIUNE_SDK}${optiuni.userAgent ? ` ${optiuni.userAgent}` : ""}`,
+		userAgent: `${profil.agent}/${VERSIUNE_SDK}${optiuni.userAgent ? ` ${optiuni.userAgent}` : ""}`,
 	}
 }
 
-/** Ruleaza un efect intern si il transforma in Promise. */
-type Rulare = <A, E>(efect: Effect.Effect<A, E, Setari>, optiuni?: OptiuniCerere) => Promise<A>
+/** @internal Ruleaza un efect intern si il transforma in Promise. */
+export type Rulare = <A, E>(efect: Effect.Effect<A, E, Setari>, optiuni?: OptiuniCerere) => Promise<A>
+
+/** @internal Valideaza optiunile si intoarce functia care ruleaza efectele interne. */
+export function creeazaRulare(optiuni: OptiuniClient, profil: ProfilClient): Rulare {
+	const setari = construiesteSetari(optiuni, profil)
+	return (efect, opt) =>
+		Effect.runPromiseExit(
+			Effect.provideService(efect, Setari, setari),
+			opt?.signal ? { signal: opt.signal } : undefined,
+		).then((exit) => {
+			if (Exit.isSuccess(exit)) return exit.value
+			if (Cause.isInterruptedOnly(exit.cause)) {
+				throw new VerificRcaError({ message: "Cererea a fost anulata.", cod: "ANULATA" })
+			}
+			// Aruncam eroarea tipata, nu invelisul Effect.
+			throw Cause.squash(exit.cause)
+		})
+}
 
 /**
  * Verificarile la cerere: RCA, ITP, rovinieta si ARR. Il accesezi prin
@@ -323,19 +369,7 @@ export class VerificRca {
 	 * })
 	 */
 	constructor(optiuni: OptiuniClient = {}) {
-		const setari = construiesteSetari(optiuni)
-		const ruleaza: Rulare = (efect, opt) =>
-			Effect.runPromiseExit(
-				Effect.provideService(efect, Setari, setari),
-				opt?.signal ? { signal: opt.signal } : undefined,
-			).then((exit) => {
-				if (Exit.isSuccess(exit)) return exit.value
-				if (Cause.isInterruptedOnly(exit.cause)) {
-					throw new VerificRcaError({ message: "Cererea a fost anulata.", cod: "ANULATA" })
-				}
-				// Aruncam eroarea tipata, nu invelisul Effect.
-				throw Cause.squash(exit.cause)
-			})
+		const ruleaza = creeazaRulare(optiuni, PROFIL_LEGACY)
 		this.verificari = new ClientVerificari(ruleaza)
 		this.vehicule = new ClientVehicule(ruleaza)
 	}

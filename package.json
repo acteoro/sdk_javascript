@@ -1,8 +1,9 @@
 {
-    "name": "@verificrca/sdk",
-    "version": "0.2.0",
+    "name": "@acteo/api",
+    "version": "0.1.0",
     "description": "SDK oficial Node.js pentru API-ul verificrca.ro: verificare RCA, ITP, rovinieta si copie conforma ARR dupa numar de inmatriculare sau serie de sasiu (VIN), plus gestionarea flotei si webhook-uri.",
     "keywords": [
+        "acteo",
         "verificrca",
         "verificare rca",
         "verificare itp",
@@ -43,10 +44,10 @@
     "homepage": "https://www.verificrca.ro/api-acces",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/verificrca/sdk_javascript.git"
+        "url": "git+https://github.com/acteoro/sdk_javascript.git"
     },
     "bugs": {
-        "url": "https://github.com/verificrca/sdk_javascript/issues"
+        "url": "https://github.com/acteoro/sdk_javascript/issues"
     },
     "author": "verificrca.ro <contact@verificrca.ro> (https://www.verificrca.ro)",
     "license": "MIT",
