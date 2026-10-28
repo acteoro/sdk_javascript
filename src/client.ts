@@ -65,7 +65,7 @@ export const PROFIL_ACTEO: ProfilClient = {
 	urlImplicit: URL_IMPLICIT,
 	variabileCheie: ["ACTEO_API_KEY", "VERIFICRCA_API_KEY"],
 	agent: "acteo-sdk-js",
-	undeCheie: "https://www.verificrca.ro/dashboard/api",
+	undeCheie: "https://app.acteo.ro/api/chei",
 }
 
 const PROFIL_LEGACY: ProfilClient = {

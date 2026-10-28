@@ -46,6 +46,11 @@ describe("Acteo: configurare", () => {
 		vi.stubEnv("VERIFICRCA_API_KEY", "")
 		expect(() => new Acteo({ fetch: fetchSimulat() })).toThrow(/ACTEO_API_KEY/)
 		expect(() => new Acteo({ fetch: fetchSimulat() })).toThrow(EroareConfigurare)
+		try {
+			new Acteo({ fetch: fetchSimulat() })
+		} catch (err) {
+			expect((err as EroareConfigurare).hint).toContain("app.acteo.ro/api/chei")
+		}
 	})
 
 	it("clientul legacy VerificRca ramane pe www.verificrca.ro", async () => {
