@@ -1,8 +1,15 @@
 import { Effect, Either } from "effect"
 import { describe, expect, it } from "vitest"
-import { EroareValidare, esteNumarInmatriculareValid, esteVinValid, normalizeaza } from "../src/index.js"
+import {
+	EroareValidare,
+	esteNumarInmatriculareValid,
+	esteSerieTalonValida,
+	esteVinValid,
+	normalizeaza,
+	normalizeazaSerieTalon,
+} from "../src/index.js"
 import { valideazaCerereVerificare, valideazaVehiculNou, type CerereVerificare } from "../src/validare.js"
-import { VIN } from "./helpers.js"
+import { SERIE_TALON, VIN } from "./helpers.js"
 
 const valideaza = (c: CerereVerificare) => Effect.runSync(Effect.either(valideazaCerereVerificare(c)))
 
@@ -23,6 +30,18 @@ describe("numere si VIN", () => {
 		expect(esteVinValid(VIN)).toBe(true)
 		expect(esteVinValid("WVWZZZ1JZXW00000I")).toBe(false)
 		expect(esteVinValid("WVWZZZ1JZXW0000")).toBe(false)
+	})
+
+	it("normalizeaza numarul talonului la litere si cifre mari", () => {
+		expect(normalizeazaSerieTalon(" i 00639603-f ")).toBe(SERIE_TALON)
+	})
+
+	it.each([SERIE_TALON, "i00639603f", "I 006396 03F", "123456"])("accepta seria de talon %s", (v) => {
+		expect(esteSerieTalonValida(v)).toBe(true)
+	})
+
+	it.each(["", "ABCDEF", "I0063", "I00639603F1234567890X"])("respinge seria de talon %s", (v) => {
+		expect(esteSerieTalonValida(v)).toBe(false)
 	})
 })
 
@@ -47,9 +66,29 @@ describe("valideazaCerereVerificare", () => {
 	})
 
 	it("rovinieta cere si VIN", () => {
-		const r = valideaza({ tip: "rovinieta", query: "B123ABC" })
+		const r = valideaza({ tip: "rovinieta", query: "B123ABC", serieTalon: SERIE_TALON })
 		expect(Either.isLeft(r) && r.left.camp).toBe("serieSasiu")
-		expect(Either.isRight(valideaza({ tip: "rovinieta", query: "B123ABC", serieSasiu: VIN }))).toBe(true)
+	})
+
+	it("rovinieta cere si numarul talonului", () => {
+		const r = valideaza({ tip: "rovinieta", query: "B123ABC", serieSasiu: VIN })
+		expect(Either.isLeft(r) && r.left.camp).toBe("serieTalon")
+		expect(Either.isLeft(r) && r.left.message).toContain("I00639603F")
+	})
+
+	it("rovinieta respinge un numar de talon fara forma valida", () => {
+		const r = valideaza({ tip: "rovinieta", query: "B123ABC", serieSasiu: VIN, serieTalon: "ABCDEF" })
+		expect(Either.isLeft(r) && r.left.camp).toBe("serieTalon")
+	})
+
+	it("rovinieta cu numar, VIN si talon: seria e normalizata", () => {
+		const r = valideaza({ tip: "rovinieta", query: "B123ABC", serieSasiu: VIN, serieTalon: "i 00639603-f" })
+		expect(Either.getOrThrow(r)).toMatchObject({ serieSasiu: VIN, serieTalon: SERIE_TALON, queryPolling: "B123ABC" })
+	})
+
+	it("serieTalon e ignorata la celelalte tipuri", () => {
+		const r = valideaza({ tip: "rca", query: "B123ABC", serieTalon: "ABCDEF" })
+		expect(Either.getOrThrow(r)).toMatchObject({ serieTalon: null })
 	})
 
 	it("ARR nu accepta VIN", () => {
@@ -80,5 +119,15 @@ describe("valideazaVehiculNou", () => {
 	it("normalizeaza numarul ca in dashboard", () => {
 		const r = Effect.runSync(valideazaVehiculNou({ numarInmatriculare: "b-123 abc", serieSasiu: "abc" }))
 		expect(r).toEqual({ numarInmatriculare: "B123ABC", serieSasiu: "ABC" })
+	})
+
+	it("trimite numarul talonului normalizat", () => {
+		const r = Effect.runSync(valideazaVehiculNou({ numarInmatriculare: "B123ABC", serieSasiu: VIN, serieTalon: "i00639603f" }))
+		expect(r).toEqual({ numarInmatriculare: "B123ABC", serieSasiu: VIN, serieTalon: SERIE_TALON })
+	})
+
+	it("respinge un numar de talon fara forma valida", () => {
+		const r = Effect.runSync(Effect.either(valideazaVehiculNou({ numarInmatriculare: "B123ABC", serieTalon: "ABCDEF" })))
+		expect(Either.isLeft(r) && r.left.camp).toBe("serieTalon")
 	})
 })

@@ -1,23 +1,25 @@
-# @verificrca/sdk: API verificare RCA, ITP, rovinietă și ARR pentru Node.js
+# @acteo/api: API verificare RCA, ITP, rovinietă și ARR pentru Node.js
 
-[![npm](https://img.shields.io/npm/v/@verificrca/sdk.svg)](https://www.npmjs.com/package/@verificrca/sdk)
-[![licență MIT](https://img.shields.io/npm/l/@verificrca/sdk.svg)](./LICENSE)
-[![tipuri TypeScript](https://img.shields.io/npm/types/@verificrca/sdk.svg)](https://www.npmjs.com/package/@verificrca/sdk)
+[![npm](https://img.shields.io/npm/v/@acteo/api.svg)](https://www.npmjs.com/package/@acteo/api)
+[![licență MIT](https://img.shields.io/npm/l/@acteo/api.svg)](./LICENSE)
+[![tipuri TypeScript](https://img.shields.io/npm/types/@acteo/api.svg)](https://www.npmjs.com/package/@acteo/api)
 
-SDK-ul oficial Node.js și TypeScript pentru [API-ul verificrca.ro](https://www.verificrca.ro/api-acces). Cu el verifici din cod dacă o mașină are RCA valabil, ITP la zi, rovinietă plătită sau copie conformă ARR, după numărul de înmatriculare sau seria de șasiu (VIN). Datele vin din sursele oficiale: baza AIDA pentru asigurarea RCA, RAR pentru inspecția tehnică periodică, CNAIR pentru rovinietă și ARR pentru transportul rutier.
+SDK-ul oficial Node.js și TypeScript pentru [API-ul Acteo](https://acteo.ro/api-acces). Cu el verifici din cod dacă o mașină are RCA valabil, ITP la zi, rovinietă plătită sau copie conformă ARR, după numărul de înmatriculare sau seria de șasiu (VIN). Datele vin din sursele oficiale: baza AIDA pentru asigurarea RCA, RAR pentru inspecția tehnică periodică, CNAIR pentru rovinietă și ARR pentru transportul rutier.
 
 Pe lângă verificările la cerere, SDK-ul gestionează vehiculele monitorizate din cont și citește webhook-urile trimise când un document se apropie de expirare. Dacă ai o firmă de leasing, rent-a-car sau curierat, un service auto ori pur și simplu o flotă, afli din timp ce RCA, ITP sau rovinietă expiră, înainte să vină amenda.
 
-> Ai nevoie de o cheie API (`vrca_...`). O generezi din [contul tău verificrca.ro](https://www.verificrca.ro/dashboard/api), după ce alegi un plan de pe [pagina API](https://www.verificrca.ro/api-acces).
+> Ai nevoie de o cheie API. O generezi din [contul tău Acteo](https://app.acteo.ro/api/chei), după ce alegi un plan de pe [pagina API](https://acteo.ro/api-acces).
 
 ```ts
-import { VerificRca } from "@verificrca/sdk"
+import { Acteo } from "@acteo/api"
 
-const vrca = new VerificRca({ apiKey: process.env.VERIFICRCA_API_KEY })
+const acteo = new Acteo({ apiKey: process.env.ACTEO_API_KEY })
 
-const rca = await vrca.verificari.verificaSiAsteapta({ tip: "rca", query: "B123ABC" })
+const rca = await acteo.auto.rca.verifica("B123ABC")
 console.log(rca.status, rca.expiresAt) // "valid" 2027-03-01T00:00:00.000Z
 ```
+
+Apelurile sunt grupate pe domeniu și pe document, deci citești din cod ce verifici: `acteo.auto.rca`, `acteo.auto.itp`, `acteo.auto.rovinieta`, `acteo.auto.arr`, plus `acteo.auto.flota` pentru vehiculele din cont și `acteo.webhooks` pentru notificări.
 
 ## Cuprins
 
@@ -32,36 +34,37 @@ console.log(rca.status, rca.expiresAt) // "valid" 2027-03-01T00:00:00.000Z
 - [Reîncercări, backoff și timeout](#reîncercări-backoff-și-timeout)
 - [Cotă și limite](#cotă-și-limite)
 - [Exemple](#exemple)
+- [Vii de la @verificrca/sdk?](#vii-de-la-verificrcasdk)
 - [Întrebări frecvente](#întrebări-frecvente)
 
 ## Ce face SDK-ul
 
-| Funcție | Ce primești |
-|---|---|
-| Verificare RCA după număr sau VIN | Starea poliței RCA și data expirării, din baza AIDA |
-| Verificare ITP după VIN | Data până la care e valabilă inspecția tehnică, din RAR |
-| Verificare rovinietă | Dacă rovinieta e plătită și până când, din CNAIR |
-| Verificare copie conformă ARR | Valabilitatea copiei conforme pentru transportatori |
-| Gestionare flotă | Adaugi, listezi și ștergi vehiculele monitorizate automat |
-| Webhook-uri | Rezultatul verificării la URL-ul tău, alerte `document.expira` la 30, 14 și 3 zile |
-| Validare locală | Numărul de înmatriculare și VIN-ul sunt verificate înainte de cerere, deci o greșeală de tastare nu consumă din cotă |
-| Erori tipate | O clasă de eroare pentru fiecare situație, cu mesaj în română și `hint` de rezolvare |
-| Reîncercări sigure | Backoff exponențial cu jitter, `Retry-After` respectat, niciun POST taxat de două ori |
+| Funcție | Apel | Ce primești |
+|---|---|---|
+| Verificare RCA după număr sau VIN | `acteo.auto.rca.verifica()` | Starea poliței RCA și data expirării, din baza AIDA |
+| Verificare ITP după VIN | `acteo.auto.itp.verifica()` | Data până la care e valabilă inspecția tehnică, din RAR |
+| Verificare rovinietă | `acteo.auto.rovinieta.verifica()` | Dacă rovinieta e plătită și până când, din CNAIR |
+| Verificare copie conformă ARR | `acteo.auto.arr.verifica()` | Valabilitatea copiei conforme pentru transportatori |
+| Gestionare flotă | `acteo.auto.flota` | Adaugi, listezi și ștergi vehiculele monitorizate automat |
+| Webhook-uri | `acteo.webhooks` | Rezultatul verificării la URL-ul tău, alerte `document.expira` la 30, 14 și 3 zile |
+| Validare locală | | Numărul de înmatriculare și VIN-ul sunt verificate înainte de cerere, deci o greșeală de tastare nu consumă din cotă |
+| Erori tipate | | O clasă de eroare pentru fiecare situație, cu mesaj în română și `hint` de rezolvare |
+| Reîncercări sigure | | Backoff exponențial cu jitter, `Retry-After` respectat, niciun POST taxat de două ori |
 
 ## Instalare
 
 ```bash
-npm install @verificrca/sdk
+npm install @acteo/api
 # sau
-pnpm add @verificrca/sdk
+pnpm add @acteo/api
 # sau
-yarn add @verificrca/sdk
+yarn add @acteo/api
 ```
 
-Cheia API o poți da direct în constructor sau prin variabila de mediu `VERIFICRCA_API_KEY`:
+Cheia API o poți da direct în constructor sau prin variabila de mediu `ACTEO_API_KEY`:
 
 ```bash
-export VERIFICRCA_API_KEY=vrca_xxxxxxxxxxxxxxxx
+export ACTEO_API_KEY=cheia_ta_api
 ```
 
 Nu pune cheia în cod care ajunge în browser. Cheia dă acces la cota contului tău și la vehiculele din el, deci o folosești doar pe server.
@@ -71,11 +74,11 @@ Nu pune cheia în cod care ajunge în browser. Cheia dă acces la cota contului 
 ### Verificare RCA după număr de înmatriculare
 
 ```ts
-import { VerificRca } from "@verificrca/sdk"
+import { Acteo } from "@acteo/api"
 
-const vrca = new VerificRca() // citește VERIFICRCA_API_KEY
+const acteo = new Acteo() // citește ACTEO_API_KEY
 
-const rca = await vrca.verificari.verificaSiAsteapta({ tip: "rca", query: "B 123 ABC" })
+const rca = await acteo.auto.rca.verifica("B 123 ABC")
 
 if (rca.status === "expired") {
 	console.log("Mașina nu are RCA valabil.")
@@ -84,58 +87,78 @@ if (rca.status === "expired") {
 }
 ```
 
-Pentru RCA îți recomandăm să trimiți și VIN-ul. Baza AIDA găsește polița mai sigur după seria de șasiu, iar uneori o poliță emisă pe VIN nu apare la căutarea după număr:
+Un text de 17 caractere fără literele I, O și Q e tratat ca VIN, orice altceva ca număr de înmatriculare. Pentru RCA îți recomandăm să trimiți ambele. Baza AIDA găsește polița mai sigur după seria de șasiu, iar uneori o poliță emisă pe VIN nu apare la căutarea după număr:
 
 ```ts
-await vrca.verificari.verificaSiAsteapta({ tip: "rca", query: "B123ABC", serieSasiu: "WVWZZZ1JZXW000001" })
+await acteo.auto.rca.verifica({ numar: "B123ABC", vin: "WVWZZZ1JZXW000001" })
 ```
 
 ### Verificare ITP după serie de șasiu
 
 ```ts
-const itp = await vrca.verificari.verificaSiAsteapta({ tip: "itp", query: "WVWZZZ1JZXW000001" })
+const itp = await acteo.auto.itp.verifica("WVWZZZ1JZXW000001")
 console.log(`ITP valabil până la ${itp.expiresAt?.toLocaleDateString("ro-RO")}`)
 ```
 
 ### Verificare rovinietă
 
+Rovinieta cere trei date: numărul de înmatriculare, seria de șasiu (VIN) și numărul certificatului de înmatriculare (`serieTalon`), tipărit jos pe talon. Sursa oficială le validează pe toate trei împreună.
+
 ```ts
-const rovinieta = await vrca.verificari.verificaSiAsteapta({
-	tip: "rovinieta",
-	query: "B123ABC",
-	serieSasiu: "WVWZZZ1JZXW000001",
+const rovinieta = await acteo.auto.rovinieta.verifica({
+	numar: "B123ABC",
+	vin: "WVWZZZ1JZXW000001",
+	serieTalon: "I00639603F",
 })
+console.log(rovinieta.status, rovinieta.expiresAt)
+```
+
+Dacă sursa respinge datele (de exemplu, numărul talonului nu corespunde mașinii), primești `EroareVerificare` cu `codSursa: "serie_talon_invalida"`. O reîncercare cu aceleași date nu ajută; corectează întâi câmpul indicat:
+
+```ts
+import { EroareVerificare } from "@acteo/api"
+
+try {
+	await acteo.auto.rovinieta.verifica({ numar: "B123ABC", vin, serieTalon: talon })
+} catch (err) {
+	if (err instanceof EroareVerificare && err.codSursa === "serie_talon_invalida") {
+		return cereUtilizatoruluiNumarulTalonului()
+	}
+	throw err
+}
 ```
 
 ### Verificare copie conformă ARR
 
 ```ts
-const arr = await vrca.verificari.verificaSiAsteapta({ tip: "arr", query: "CJ45XYZ" })
+const arr = await acteo.auto.arr.verifica("CJ45XYZ")
 ```
 
 ## Ce identificator cere fiecare verificare
 
-Fiecare sursă oficială caută după alt identificator. SDK-ul aplică aceleași reguli ca API-ul și te oprește înainte de cerere dacă lipsește ceva.
+Fiecare sursă oficială caută după alt identificator, așa că fiecare document își cere exact datele lui. SDK-ul aplică aceleași reguli ca API-ul și te oprește înainte de cerere dacă lipsește ceva.
 
-| `tip` | `query` | `serieSasiu` | Sursa |
-|---|---|---|---|
-| `rca` | număr de înmatriculare **sau** VIN | opțional, recomandat | AIDA / BAAR |
-| `itp` | VIN (17 caractere) | nu | RAR |
-| `rovinieta` | număr de înmatriculare | **obligatoriu** | CNAIR |
-| `arr` | număr de înmatriculare | nu | ARR |
+| Apel | Ce primește | Sursa |
+|---|---|---|
+| `auto.rca.verifica(x)` | număr de înmatriculare **sau** VIN, ori `{ numar, vin }` (recomandat) | AIDA / BAAR |
+| `auto.itp.verifica(vin)` | VIN (17 caractere) | RAR |
+| `auto.rovinieta.verifica({ numar, vin, serieTalon })` | toate trei, **obligatorii** | CNAIR |
+| `auto.arr.verifica(numar)` | număr de înmatriculare | ARR |
 
 Formatele de număr acceptate: București (`B123ABC`, `B12ABC`), județe (`CJ45XYZ`, `IS08BCD`), corp diplomatic (`CD123A`) și numere temporare (`TC1234AB`). Spațiile și cratimele sunt eliminate automat, deci `b-123 abc` devine `B123ABC`. VIN-ul trebuie să aibă exact 17 caractere, fără literele I, O și Q (standardul ISO 3779).
+
+`serieTalon` este numărul certificatului de înmatriculare, de forma `I00639603F`. SDK-ul păstrează doar literele și cifrele, cu majuscule, și cere între 6 și 20 de caractere, cu cel puțin o cifră. Doar sursa oficială poate confirma că numărul aparține mașinii.
 
 ## Cum decurge o verificare
 
 1. **Cerere** (`porneste`). Dacă există un rezultat recent pentru mașina respectivă, îl primești imediat. Altfel verificarea intră în coadă și primești `status: "processing"`.
 2. **Interogarea sursei.** Sursa oficială e consultată în fundal. Dacă nu răspunde în 4 minute, verificarea se încheie cu eroare.
 3. **Rezultatul** ajunge la tine pe una din trei căi:
-   - `verificaSiAsteapta()` face tot drumul și întoarce direct rezultatul final;
+   - `verifica()` face tot drumul și întoarce direct rezultatul final;
    - `rezultat()` sau `asteapta()` fac polling, fără să consume din cotă;
-   - webhook: dacă trimiți `callbackUrl`, API-ul face POST cu rezultatul la adresa ta.
+   - webhook: dacă trimiți `callbackUrl` la `porneste()`, API-ul face POST cu rezultatul la adresa ta.
 
-Doar pasul 1 consumă din cota planului. Interogările de rezultat sunt gratuite.
+O verificare consumă din cota planului doar când sursa oficială a răspuns, inclusiv atunci când refuză datele trimise. Dacă sursa nu răspunde, nu consumi nimic. Interogările de rezultat sunt gratuite.
 
 ### Statusuri
 
@@ -147,16 +170,22 @@ Doar pasul 1 consumă din cota planului. Interogările de rezultat sunt gratuite
 | `not_found` | Sursa nu a găsit vehiculul | `null` |
 | `processing` | Verificarea e încă în curs | nu există |
 
-Când sursa oficială nu răspunde, SDK-ul aruncă `EroareVerificare` și poți relua cererea.
+Când verificarea se încheie cu eroare, SDK-ul aruncă `EroareVerificare`. Dacă sursa oficială doar nu a răspuns, `codSursa` lipsește și poți relua cererea. Dacă sursa a refuzat datele trimise, `codSursa` spune ce e greșit și reîncercarea nu ajută până nu corectezi câmpul:
+
+| `codSursa` | Câmpul de corectat |
+|---|---|
+| `serie_talon_invalida` | `serieTalon`, numărul certificatului de înmatriculare |
+| `vin_invalid` | `vin` |
+| `numar_invalid` | numărul de înmatriculare |
 
 ## Referință API
 
-### `new VerificRca(optiuni?)`
+### `new Acteo(optiuni?)`
 
 | Opțiune | Tip | Implicit | Descriere |
 |---|---|---|---|
-| `apiKey` | `string` | `process.env.VERIFICRCA_API_KEY` | Cheia API `vrca_...` |
-| `baseUrl` | `string` | `https://www.verificrca.ro` | Adresa API-ului |
+| `apiKey` | `string` | `process.env.ACTEO_API_KEY` | Cheia API |
+| `baseUrl` | `string` | `https://api.acteo.ro` | Adresa API-ului |
 | `timeoutMs` | `number` | `30000` | Timeout pe fiecare cerere HTTP |
 | `retry` | `object \| false` | `{ incercari: 3, intarziereInitialaMs: 500, intarziereMaximaMs: 10000 }` | Politica de reîncercare; `false` o oprește |
 | `fetch` | `typeof fetch` | `globalThis.fetch` | Alt `fetch` (proxy, agent HTTP, teste) |
@@ -166,57 +195,73 @@ Constructorul aruncă `EroareConfigurare` dacă lipsește cheia sau dacă o opț
 
 Toate metodele primesc ca ultim argument `{ signal?: AbortSignal }`. Cu el poți anula cererea împreună cu reîncercările și așteptarea ei.
 
-### `verificari.porneste(cerere)`
+### `auto.<document>.verifica(identificator, optiuni?)`
 
-Pornește o verificare și **consumă o unitate din cotă**. Întoarce fie rezultatul final (dacă există unul recent), fie un obiect `VerificareInCurs` pe care îl poți da mai departe la `rezultat()` sau `asteapta()`.
+Disponibil pe `auto.rca`, `auto.itp`, `auto.rovinieta` și `auto.arr`. Pornește verificarea și așteaptă rezultatul final. E calea cea mai simplă pentru scripturi și joburi cron. Opțiuni: `intervalMs` (implicit 3000, minim 2000) și `timeoutMs` (implicit 5 minute). La depășire aruncă `EroareTimeoutVerificare`. Rezultatul are tipul documentului: `auto.rca.verifica()` întoarce un rezultat cu `tip: "rca"`.
+
+### `auto.<document>.porneste(identificator, { callbackUrl? })`
+
+Pornește verificarea fără să aștepte. Întoarce fie rezultatul final (dacă există unul recent), fie un obiect `VerificareInCurs` pe care îl dai mai departe la `rezultat()` sau `asteapta()`.
 
 ```ts
-const r = await vrca.verificari.porneste({
-	tip: "itp",
-	query: "WVWZZZ1JZXW000001",
-	callbackUrl: "https://example.com/webhooks/verificrca/9f3k2", // opțional
+const r = await acteo.auto.itp.porneste("WVWZZZ1JZXW000001", {
+	callbackUrl: "https://example.com/webhooks/acteo/9f3k2", // opțional
 })
 
 if (r.status === "processing") {
 	console.log("În coadă, requestId:", r.requestId)
-	const final = await vrca.verificari.asteapta(r)
+	const final = await acteo.auto.itp.asteapta(r)
 }
 ```
 
-### `verificari.rezultat(referinta)`
+### `auto.<document>.rezultat(referinta)`
 
-Interoghează o singură dată. Nu consumă din cotă. Primește obiectul întors de `porneste()` sau `{ tip, query, serieSasiu?, since? }`.
+Interoghează o singură dată. Nu consumă din cotă. Primește obiectul întors de `porneste()` sau direct identificatorul documentului, de exemplu `acteo.auto.rca.rezultat("B123ABC")`.
 
-### `verificari.asteapta(referinta, optiuni?)`
+### `auto.<document>.asteapta(referinta, optiuni?)`
 
-Face polling până la rezultatul final. Opțiuni: `intervalMs` (implicit 3000, minim 2000) și `timeoutMs` (implicit 5 minute). La depășire aruncă `EroareTimeoutVerificare`.
+Face polling până la rezultatul final, cu aceleași opțiuni ca `verifica()`. Nu consumă din cotă.
 
-### `verificari.verificaSiAsteapta(cerere, optiuni?)`
+### `auto.flota.lista()`
 
-`porneste()` urmat de `asteapta()`, într-un singur apel. E calea cea mai simplă pentru scripturi și joburi cron.
+Toate vehiculele din cont, cu datele de expirare `rcaExpiraLa`, `itpExpiraLa`, `rovinietaExpiraLa` și `arrExpiraLa` (ca `Date` sau `null`). Câmpul `activ` e `true` cât timp vehiculul e verificat automat și primește notificări de expirare. `serieTalon` e numărul certificatului de înmatriculare (sau `null`), iar `serieTalonRespinsa` devine `true` când sursa oficială l-a respins; rovinieta nu se mai verifică până nu e corectat. Vehiculele din cont sunt verificate automat și periodic, deci lista îți dă o imagine la zi a flotei fără să consume din cota de verificări.
 
-### `vehicule.lista()`
+### `auto.flota.adauga({ numarInmatriculare?, serieSasiu?, serieTalon?, arrMonitorizat? })`
 
-Toate vehiculele din cont, cu datele de expirare `rcaExpiraLa`, `itpExpiraLa`, `rovinietaExpiraLa` și `arrExpiraLa` (ca `Date` sau `null`). Câmpul `activ` e `true` cât timp vehiculul e verificat automat și primește notificări de expirare. Vehiculele din cont sunt verificate automat și periodic, deci lista îți dă o imagine la zi a flotei fără să consume din cota de verificări.
+Adaugă un vehicul în monitorizare. Trimite cel puțin un identificator. ITP-ul se monitorizează doar cu VIN, iar rovinieta cere numărul, VIN-ul și `serieTalon`; fără numărul talonului, rovinieta nu se verifică.
 
-### `vehicule.adauga({ numarInmatriculare?, serieSasiu?, arrMonitorizat? })`
+```ts
+const v = await acteo.auto.flota.adauga({
+	numarInmatriculare: "B123ABC",
+	serieSasiu: "WVWZZZ1JZXW000001",
+	serieTalon: "I00639603F",
+})
+```
 
-Adaugă un vehicul în monitorizare. Trimite cel puțin un identificator. Poți primi `EroareInterzis` cu `cod: "LIMIT_ATINS"` când ai atins numărul de mașini din plan, sau `EroareConflict` când vehiculul există deja.
+Poți primi `EroareInterzis` cu `cod: "LIMIT_ATINS"` când ai atins numărul de mașini din plan, sau `EroareConflict` când vehiculul există deja.
 
-### `vehicule.sterge(id)`
+### `auto.flota.sterge(id)`
 
 Scoate vehiculul din cont. Aruncă `EroareNegasit` dacă ID-ul nu există în contul cheii.
 
-Operațiile pe vehicule nu consumă din cota de verificări, dar cer un plan activ.
+Operațiile pe flotă nu consumă din cota de verificări, dar cer un plan activ.
 
 ### Utilitare de validare
 
 ```ts
-import { esteNumarInmatriculareValid, esteVinValid, normalizeaza } from "@verificrca/sdk"
+import {
+	esteNumarInmatriculareValid,
+	esteSerieTalonValida,
+	esteVinValid,
+	normalizeaza,
+	normalizeazaSerieTalon,
+} from "@acteo/api"
 
 esteNumarInmatriculareValid("CJ 45 XYZ") // true
 esteVinValid("WVWZZZ1JZXW00000I")        // false: litera I nu e permisă în VIN
+esteSerieTalonValida("I00639603F")       // true
 normalizeaza(" b-123 abc ")              // "B123ABC"
+normalizeazaSerieTalon("i 00639603-f")   // "I00639603F"
 ```
 
 Le poți folosi pentru formularele tale, ca să validezi datele înainte să ajungă la server.
@@ -228,7 +273,7 @@ Le poți folosi pentru formularele tale, ca să validezi datele înainte să aju
 | `TIPURI_VERIFICARE` | `["rca", "itp", "rovinieta", "arr"]`, util pentru dropdown-uri și validare |
 | `HEADER_CHEIE_WEBHOOK` | `"x-verificrca-key"`, headerul cu cheia de webhook |
 | `HEADER_EVENIMENT_WEBHOOK` | `"x-verificrca-event"`, headerul cu numele evenimentului |
-| `URL_IMPLICIT` | `"https://www.verificrca.ro"` |
+| `URL_IMPLICIT` | `"https://api.acteo.ro"` |
 | `VERSIUNE_SDK` | versiunea pachetului, trimisă în `User-Agent` |
 
 ### Documentația completă a tipurilor
@@ -244,10 +289,8 @@ API-ul trimite două feluri de webhook. SDK-ul le validează cu scheme stricte �
 Când trimiți `callbackUrl` la `porneste()`, primești un POST cu rezultatul imediat ce e gata. Dacă sursa nu răspunde, primești `status: "error"`.
 
 ```ts
-import { parseazaWebhookRezultat } from "@verificrca/sdk"
-
-app.post("/webhooks/verificrca/9f3k2", express.raw({ type: "application/json" }), (req, res) => {
-	const r = parseazaWebhookRezultat(req.body) // string, Buffer sau obiect
+app.post("/webhooks/acteo/9f3k2", express.raw({ type: "application/json" }), (req, res) => {
+	const r = acteo.webhooks.parseazaRezultat(req.body) // string, Buffer sau obiect
 	if (r.status !== "error") salveaza(r.requestId, r.result?.expiresAt)
 	res.sendStatus(200)
 })
@@ -260,11 +303,11 @@ Pune un segment greu de ghicit în URL, păstrează-l pe HTTPS și verifică dac
 Pe planurile care includ webhook-uri, configurezi un URL în dashboard și primești câte un eveniment când un document al unui vehicul monitorizat intră într-un prag de expirare. Pentru RCA, ITP și rovinietă pragurile sunt 30, 14 și 3 zile, iar pentru ARR 60, 50 și 45 de zile. Fiecare cerere vine cu cheia contului în headerul `X-Verificrca-Key`. SDK-ul o compară în timp constant, ca să nu dezvăluie nimic prin durata comparației:
 
 ```ts
-import { verificaWebhookNotificare, EroareWebhook } from "@verificrca/sdk"
+import { EroareWebhook } from "@acteo/api"
 
-app.post("/webhooks/verificrca", express.raw({ type: "application/json" }), (req, res) => {
+app.post("/webhooks/acteo", express.raw({ type: "application/json" }), (req, res) => {
 	try {
-		const ev = verificaWebhookNotificare(req.body, req.headers, { cheie: process.env.VERIFICRCA_WEBHOOK_KEY! })
+		const ev = acteo.webhooks.verificaNotificare(req.body, req.headers, { cheie: process.env.ACTEO_WEBHOOK_KEY! })
 		if (ev.event === "document.expira") {
 			trimiteAlerta(`${ev.vehicul.numarInmatriculare}: ${ev.document} expiră în ${ev.zileRamase} zile`)
 		}
@@ -279,7 +322,7 @@ Folosește `ev.id` pentru deduplicare. Un eveniment poate ajunge de mai multe or
 
 ## Erori
 
-Toate erorile moștenesc `VerificRcaError`, care la rândul ei moștenește `Error`. Fiecare are `_tag`, `message` (în română), plus `status`, `cod`, `hint` și `raspuns` când vin de la API.
+Toate erorile moștenesc `ActeoError`, care la rândul ei moștenește `Error`. Fiecare are `_tag`, `message` (în română), plus `status`, `cod`, `hint` și `raspuns` când vin de la API.
 
 | Clasă | Când apare | Câmpuri utile |
 |---|---|---|
@@ -294,19 +337,19 @@ Toate erorile moștenesc `VerificRcaError`, care la rândul ei moștenește `Err
 | `EroareServer` | 5xx | `status` |
 | `EroareRetea` | Fără răspuns sau timeout | `timeout`, `neajunsa` |
 | `EroareRaspunsInvalid` | Răspuns cu formă neașteptată | `raspuns` |
-| `EroareVerificare` | Sursa oficială nu a putut fi interogată | |
+| `EroareVerificare` | Sursa oficială nu a putut fi interogată sau a refuzat datele | `codSursa` |
 | `EroareTimeoutVerificare` | `asteapta()` a depășit `timeoutMs` | |
 | `EroareWebhook` | Cheie greșită sau payload invalid | `cod` |
 
 ```ts
-import { EroareLimita, EroareValidare, VerificRcaError } from "@verificrca/sdk"
+import { ActeoError, EroareLimita, EroareValidare } from "@acteo/api"
 
 try {
-	await vrca.verificari.porneste({ tip: "rca", query: numar })
+	await acteo.auto.rca.porneste(numar)
 } catch (err) {
 	if (err instanceof EroareValidare) return arataUtilizatorului(err.message)
 	if (err instanceof EroareLimita && err.cod === "COTA_ATINSA") return amanaPanaMaine()
-	if (err instanceof VerificRcaError) logger.error(err._tag, err.message, err.hint)
+	if (err instanceof ActeoError) logger.error(err._tag, err.message, err.hint)
 	throw err
 }
 ```
@@ -328,7 +371,7 @@ SDK-ul nu trimite niciodată de două ori o verificare taxată.
 | 4xx | nu | nu |
 
 ```ts
-const vrca = new VerificRca({
+const acteo = new Acteo({
 	timeoutMs: 15_000,
 	retry: { incercari: 5, intarziereInitialaMs: 250, intarziereMaximaMs: 8_000 },
 })
@@ -336,16 +379,16 @@ const vrca = new VerificRca({
 
 ## Cotă și limite
 
-Fiecare `porneste()` consumă o unitate din cota zilnică și lunară a planului. Dacă mașina a fost verificată de curând, primești imediat rezultatul existent. Cererea tot consumă din cotă.
+Fiecare verificare consumă o unitate din cota zilnică și lunară a planului, dar numai când sursa oficială a răspuns. Dacă mașina a fost verificată de curând, primești imediat rezultatul existent, iar cererea consumă din cotă. Dacă sursa nu răspunde, nu consumi nimic. Verificările încă în curs ocupă cota până la răspuns, ca să nu treci de limită cu cereri trimise în paralel.
 
 Rezultatele au câmpul `limite`, completat din headerele `X-RateLimit-*`:
 
 ```ts
-const r = await vrca.verificari.porneste({ tip: "rca", query: "B123ABC" })
+const r = await acteo.auto.rca.porneste("B123ABC")
 console.log(r.limite) // { zi: { limita: 300, ramase: 287 }, luna: { limita: 10000, ramase: 9412 } }
 ```
 
-Cota zilnică se resetează la miezul nopții. Limitele fiecărui plan le găsești pe [pagina API](https://www.verificrca.ro/api-acces).
+Cota zilnică se resetează la miezul nopții, ora României. Limitele fiecărui plan le găsești pe [pagina API](https://acteo.ro/api-acces).
 
 ## Exemple
 
@@ -361,21 +404,47 @@ Folderul [`examples/`](./examples) conține scripturi gata de rulat:
 const numere = ["B123ABC", "CJ45XYZ", "IS08BCD"]
 
 const rezultate = await Promise.allSettled(
-	numere.map((query) => vrca.verificari.verificaSiAsteapta({ tip: "rca", query })),
+	numere.map((numar) => acteo.auto.rca.verifica(numar)),
 )
 ```
 
-Pentru liste mari, adaugă vehiculele în cont cu `vehicule.adauga()`. Sunt monitorizate automat și primești notificările de expirare, fără să consumi din cota de verificări.
+Pentru liste mari, adaugă vehiculele în cont cu `auto.flota.adauga()`. Sunt monitorizate automat și primești notificările de expirare, fără să consumi din cota de verificări.
+
+## Vii de la @verificrca/sdk?
+
+Pachetul `@verificrca/sdk` s-a mutat la `@acteo/api`. Instalezi pachetul nou și schimbi apelurile:
+
+| Înainte | Acum |
+|---|---|
+| `new VerificRca()` | `new Acteo()` |
+| `VERIFICRCA_API_KEY` | `ACTEO_API_KEY` (cea veche e citită în continuare, dacă lipsește cea nouă) |
+| `verificari.verificaSiAsteapta({ tip: "rca", query })` | `auto.rca.verifica(query)` |
+| `verificari.verificaSiAsteapta({ tip: "itp", query: vin })` | `auto.itp.verifica(vin)` |
+| `verificari.verificaSiAsteapta({ tip: "rovinieta", query, serieSasiu, serieTalon })` | `auto.rovinieta.verifica({ numar, vin, serieTalon })` |
+| `verificari.porneste(...)` / `rezultat(...)` / `asteapta(...)` | `auto.<document>.porneste` / `rezultat` / `asteapta` |
+| `vehicule.lista()` / `adauga()` / `sterge()` | `auto.flota.lista()` / `adauga()` / `sterge()` |
+| `parseazaWebhookRezultat()` / `verificaWebhookNotificare()` | `webhooks.parseazaRezultat()` / `webhooks.verificaNotificare()` |
+| `VerificRcaError` | `ActeoError` |
+
+Erorile, tipurile rezultatelor și utilitarele de validare au rămas aceleași.
 
 ## Întrebări frecvente
 
 ### Cum verific RCA-ul unei mașini din Node.js?
 
-Instalezi `@verificrca/sdk`, creezi un client cu cheia API și apelezi `verificari.verificaSiAsteapta({ tip: "rca", query: "B123ABC" })`. Primești statusul poliței și data expirării, din baza de date AIDA.
+Instalezi `@acteo/api`, creezi un client cu cheia API și apelezi `acteo.auto.rca.verifica("B123ABC")`. Primești statusul poliței și data expirării, din baza de date AIDA.
 
 ### Pot verifica ITP-ul după numărul de înmatriculare?
 
 Nu. RAR caută inspecția tehnică periodică doar după seria de șasiu (VIN), așa că SDK-ul respinge cererea înainte să plece, fără să consume din cotă. VIN-ul îl găsești în talon, la rubrica E.
+
+### Unde găsesc numărul certificatului de înmatriculare?
+
+Pe talon (certificatul de înmatriculare), jos, la rubrica „Numărul certificatului”. Conține litere și cifre, de exemplu `I00639603F`. Nu îl confunda cu seria de șasiu (VIN), care e la rubrica E și are 17 caractere. SDK-ul acceptă numărul și cu spații sau cu litere mici și îl aduce singur la forma corectă.
+
+### De ce verificarea rovinietei cere numărul talonului?
+
+Pentru că așa cere sursa oficială: interogarea rovinietei validează împreună numărul de înmatriculare, VIN-ul și numărul certificatului de înmatriculare. Fără el, cererea e respinsă înainte să plece, fără să consume din cotă. Pentru vehiculele din cont, adaugă `serieTalon` la `auto.flota.adauga()`, altfel rovinieta lor nu se monitorizează.
 
 ### De unde vin datele?
 
@@ -383,7 +452,7 @@ Din sursele oficiale: AIDA (baza de date a asigurărilor RCA administrată de BA
 
 ### De ce o poliță RCA nouă apare ca expirată?
 
-Asigurătorul are nevoie de timp ca să înregistreze polița nouă în AIDA, de obicei între 1 și 7 zile. În acest interval verificarea poate arăta polița veche. Detalii în articolul despre [amenzile pentru RCA expirat](https://www.verificrca.ro/postari/amenzi-rca-expirat-2026).
+Asigurătorul are nevoie de timp ca să înregistreze polița nouă în AIDA, de obicei între 1 și 7 zile. În acest interval verificarea poate arăta polița veche. Detalii despre [amenzile pentru RCA expirat](https://acteo.ro/amenzi/rca).
 
 ### Merge în browser?
 
@@ -391,15 +460,16 @@ Tehnic da, dar nu trebuie să-l folosești acolo, pentru că ar expune cheia API
 
 ### Există SDK pentru PHP sau Python?
 
-Urmează. Până atunci, [documentația API](https://www.verificrca.ro/api-acces) are exemple pentru cURL, PHP și Python.
+Da, cu aceleași apeluri: [`acteo/api`](https://github.com/acteoro/sdk_php) pentru PHP și [`acteo`](https://github.com/acteoro/sdk_python) pentru Python. [Documentația API](https://acteo.ro/api-acces) are și exemple pentru cURL.
 
 ## Linkuri utile
 
-- [Documentația API verificrca.ro](https://www.verificrca.ro/api-acces)
-- [Verificare RCA online](https://www.verificrca.ro/verificare-rca)
-- [Verificare ITP online](https://www.verificrca.ro/verificare-itp)
-- [Verificare rovinietă online](https://www.verificrca.ro/verificare-rovinieta)
-- [Monitorizare flote auto](https://www.verificrca.ro/flote)
+- [Documentația API Acteo](https://acteo.ro/api-acces)
+- [Verificare RCA online](https://acteo.ro/verificare-rca)
+- [Verificare ITP online](https://acteo.ro/verificare-itp)
+- [Verificare rovinietă online](https://acteo.ro/verificare-rovinieta)
+- [Verificare copie conformă ARR](https://acteo.ro/verificare-arr)
+- [Monitorizare flote auto](https://acteo.ro/flote)
 - [Changelog](./CHANGELOG.md)
 
 ## Dezvoltare
@@ -416,8 +486,8 @@ Testele e2e citesc configurarea din `.env.e2e`, fișier ignorat de git. Porneșt
 cp .env.e2e.example .env.e2e
 ```
 
-Fără cheie rulează doar testul de autentificare. Cu `VERIFICRCA_API_KEY` se adaugă listarea vehiculelor, care e gratuită. Verificările reale (`VERIFICRCA_E2E_VERIFICARI=1`) consumă din cotă, iar testul de flotă (`VERIFICRCA_E2E_FLOTA=1`) adaugă și șterge un vehicul. Amândouă pornesc doar dacă le activezi explicit.
+Fără cheie rulează doar testul de autentificare. Cu `ACTEO_API_KEY` se adaugă listarea vehiculelor, care e gratuită. Verificările reale (`ACTEO_E2E_VERIFICARI=1`) consumă din cotă, iar testul de flotă (`ACTEO_E2E_FLOTA=1`) adaugă și șterge un vehicul. Amândouă pornesc doar dacă le activezi explicit.
 
 ## Licență
 
-[MIT](./LICENSE), © verificrca.ro
+[MIT](./LICENSE), © Acteo.ro

@@ -1,4 +1,5 @@
 import { Data } from "effect"
+import type { CodRefuzSursa } from "./schemas.js"
 
 /** Campurile comune tuturor erorilor SDK-ului. */
 export interface DateEroare {
@@ -18,7 +19,7 @@ export interface DateEroare {
 
 /**
  * Baza tuturor erorilor aruncate de SDK. `instanceof VerificRcaError` prinde
- * orice eroare de la verificrca, iar `_tag` spune exact care e.
+ * orice eroare de la API, iar `_tag` spune exact care e.
  */
 export class VerificRcaError extends Data.Error<DateEroare> {
 	/** Discriminantul erorii. Fiecare subclasa are propria valoare, ex: `"EroareLimita"`. */
@@ -144,7 +145,7 @@ export class EroareLimita extends VerificRcaError {
 	}
 }
 
-/** 5xx: eroare pe serverul verificrca. Cererile sigure se reincearca automat. */
+/** 5xx: eroare pe serverul API-ului. Cererile sigure se reincearca automat. */
 export class EroareServer extends VerificRcaError {
 	/** Discriminantul erorii: `"EroareServer"`. Util in `switch (err._tag)`. */
 	override readonly _tag = "EroareServer"
@@ -193,14 +194,32 @@ export class EroareRaspunsInvalid extends VerificRcaError {
 }
 
 /**
- * Sursa oficiala nu a putut fi interogata (statusul `error` la polling sau in
- * webhook). Verificarea poate fi reluata cu o cerere noua.
+ * Verificarea s-a incheiat cu statusul `error`. Doua situatii:
+ * - sursa oficiala nu a raspuns la timp: `codSursa` lipseste si verificarea
+ *   poate fi reluata cu o cerere noua;
+ * - sursa a refuzat datele trimise: `codSursa` spune ce camp e gresit
+ *   (`serie_talon_invalida`, `vin_invalid`, `numar_invalid`). O reincercare cu
+ *   aceleasi date nu ajuta; corecteaza campul intai.
  */
 export class EroareVerificare extends VerificRcaError {
 	/** Discriminantul erorii: `"EroareVerificare"`. Util in `switch (err._tag)`. */
 	override readonly _tag = "EroareVerificare"
 	/** Numele clasei, afisat in loguri si in stack trace. */
 	override readonly name = "EroareVerificare"
+	/**
+	 * Codul API-ului cand sursa a refuzat datele trimise, ex: `"serie_talon_invalida"`.
+	 * Lipseste cand sursa doar nu a raspuns. Vezi {@link CodRefuzSursa}.
+	 */
+	declare readonly codSursa?: CodRefuzSursa
+
+	/**
+	 * Creeaza eroarea. SDK-ul o construieste singur; o creezi manual doar in teste.
+	 *
+	 * @param args mesajul, detaliile comune ({@link DateEroare}) si `codSursa`.
+	 */
+	constructor(args: DateEroare & { readonly codSursa?: CodRefuzSursa }) {
+		super(args)
+	}
 }
 
 /** `verificaSiAsteapta` a depasit timpul maxim de asteptare. */

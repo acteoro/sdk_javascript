@@ -13,6 +13,8 @@ const vehicul = {
 	id: "6f2c1b9e-0000-4000-8000-000000000001",
 	numarInmatriculare: "B123ABC",
 	serieSasiu: VIN,
+	serieTalon: "I00639603F",
+	serieTalonRespinsa: false,
 	rcaExpiraLa: "2027-03-01T00:00:00.000Z",
 	itpExpiraLa: null,
 	rovinietaExpiraLa: "2026-12-31T00:00:00.000Z",
@@ -30,6 +32,14 @@ describe("vehicule", () => {
 		expect(v?.rcaExpiraLa).toBeInstanceOf(Date)
 		expect(v?.itpExpiraLa).toBeNull()
 		expect(v).not.toHaveProperty("campNouDeLaServer")
+		expect(v).toMatchObject({ serieTalon: "I00639603F", serieTalonRespinsa: false })
+	})
+
+	it("lista tolereaza un server fara campurile talonului", async () => {
+		const { serieTalon: _s, serieTalonRespinsa: _r, ...vechi } = vehicul
+		const fetch = fetchSimulat({ body: { vehicule: [vechi] } })
+		const [v] = await client(fetch).vehicule.lista()
+		expect(v).toMatchObject({ serieTalon: null, serieTalonRespinsa: false })
 	})
 
 	it("adauga trimite forma canonica", async () => {
@@ -37,6 +47,12 @@ describe("vehicule", () => {
 		const v = await client(fetch).vehicule.adauga({ numarInmatriculare: "b 123-abc", arrMonitorizat: false })
 		expect(v.id).toBe(vehicul.id)
 		expect(cerere(fetch).body).toEqual({ numarInmatriculare: "B123ABC", arrMonitorizat: false })
+	})
+
+	it("adauga trimite numarul talonului", async () => {
+		const fetch = fetchSimulat({ status: 201, body: { vehicul } })
+		await client(fetch).vehicule.adauga({ numarInmatriculare: "B123ABC", serieSasiu: VIN, serieTalon: "i 00639603 f" })
+		expect(cerere(fetch).body).toEqual({ numarInmatriculare: "B123ABC", serieSasiu: VIN, serieTalon: "I00639603F" })
 	})
 
 	it("409 VEHICUL_EXISTENT si 403 LIMIT_ATINS", async () => {

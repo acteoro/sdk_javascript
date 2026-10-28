@@ -46,6 +46,7 @@ export function cerere(fn: ReturnType<typeof fetchSimulat>, index = 0) {
 }
 
 export const VIN = "WVWZZZ1JZXW000001"
+export const SERIE_TALON = "I00639603F"
 
 export const rezultatValid = {
 	tip: "rca",

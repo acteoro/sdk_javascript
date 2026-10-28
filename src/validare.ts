@@ -14,6 +14,8 @@ const NUMAR_REGEX = new RegExp(
 )
 const VIN_REGEX = /^[A-HJ-NPR-Z0-9]{17}$/i
 const LUNGIME_VIN = 17
+// Numarul certificatului de inmatriculare: 6-20 litere si cifre, cel putin o cifra.
+const SERIE_TALON_REGEX = /^(?=.*\d)[A-Z0-9]{6,20}$/
 
 /** Toate tipurile de verificare acceptate de API, in ordine: `["rca", "itp", "rovinieta", "arr"]`. */
 export const TIPURI_VERIFICARE: readonly TipVerificare[] = ["rca", "itp", "rovinieta", "arr"]
@@ -60,6 +62,37 @@ export function esteVinValid(valoare: string): boolean {
 	return VIN_REGEX.test(normalizeaza(valoare))
 }
 
+/**
+ * Aduce numarul certificatului de inmatriculare (talon) la forma canonica:
+ * doar litere si cifre, cu majuscule.
+ *
+ * @param valoare textul introdus de utilizator.
+ * @returns forma normalizata.
+ * @example
+ * normalizeazaSerieTalon(" i 00639603-f ") // "I00639603F"
+ */
+export function normalizeazaSerieTalon(valoare: string): string {
+	return valoare.toUpperCase().replace(/[^A-Z0-9]/g, "")
+}
+
+/**
+ * Verifica forma numarului certificatului de inmatriculare (talon), tiparit jos
+ * pe talon: 6-20 litere si cifre, cel putin o cifra. Corectitudinea lui o
+ * confirma doar sursa oficiala, impreuna cu numarul si VIN-ul.
+ *
+ * @param valoare numarul certificatului (spatiile si cratimele sunt ignorate).
+ * @returns `true` daca are o forma valida.
+ * @example
+ * esteSerieTalonValida("I00639603F") // true
+ * esteSerieTalonValida("ABCDEF")     // false: nu contine nicio cifra
+ */
+export function esteSerieTalonValida(valoare: string): boolean {
+	return SERIE_TALON_REGEX.test(normalizeazaSerieTalon(valoare))
+}
+
+const MESAJ_SERIE_TALON =
+	"numarul certificatului de inmatriculare, tiparit jos pe talon la \"Numarul certificatului\" (ex: I00639603F)."
+
 function explicaVin(valoare: string): string {
 	if (!valoare) return "Lipseste seria de sasiu (VIN)."
 	if (valoare.length !== LUNGIME_VIN) {
@@ -82,6 +115,12 @@ export interface CerereVerificare {
 	readonly query: string
 	/** Seria de sasiu (VIN). Obligatorie la rovinieta, recomandata la RCA. */
 	readonly serieSasiu?: string
+	/**
+	 * Numarul certificatului de inmatriculare (talon), tiparit jos pe talon, ex:
+	 * `I00639603F`. Obligatoriu la rovinieta: sursa oficiala il valideaza impreuna
+	 * cu numarul si VIN-ul. Ignorat la celelalte tipuri.
+	 */
+	readonly serieTalon?: string
 	/** URL http(s) unde API-ul trimite rezultatul prin POST cand e gata. */
 	readonly callbackUrl?: string
 }
@@ -92,6 +131,8 @@ export interface TintaVerificare {
 	/** `query` normalizat, trimis la POST. */
 	readonly query: string
 	readonly serieSasiu: string | null
+	/** Numarul talonului normalizat, doar la rovinieta. */
+	readonly serieTalon: string | null
 	/** Identificatorul folosit de API la polling (la RCA cu VIN, VIN-ul). */
 	readonly queryPolling: string
 	readonly callbackUrl: string | null
@@ -121,6 +162,7 @@ function valideazaIdentificatori(
 	tip: TipVerificare,
 	query: string,
 	serieSasiu: string,
+	serieTalon: string,
 ): Effect.Effect<Omit<TintaVerificare, "callbackUrl">, EroareValidare> {
 	if (!query) {
 		return Effect.fail(eroare("Lipseste `query` (numar de inmatriculare sau serie de sasiu).", "query"))
@@ -129,14 +171,14 @@ function valideazaIdentificatori(
 	switch (tip) {
 		case "rca": {
 			if (NUMAR_REGEX.test(query)) {
-				if (!serieSasiu) return Effect.succeed({ tip, query, serieSasiu: null, queryPolling: query })
+				if (!serieSasiu) return Effect.succeed({ tip, query, serieSasiu: null, queryPolling: query, serieTalon: null })
 				if (!VIN_REGEX.test(serieSasiu)) {
 					return Effect.fail(eroare(`\`serieSasiu\` invalid. ${explicaVin(serieSasiu)}`, "serieSasiu"))
 				}
 				// Cu VIN, API-ul cauta polita dupa VIN, deci si pollingul merge pe VIN.
-				return Effect.succeed({ tip, query, serieSasiu, queryPolling: serieSasiu })
+				return Effect.succeed({ tip, query, serieSasiu, queryPolling: serieSasiu, serieTalon: null })
 			}
-			if (VIN_REGEX.test(query)) return Effect.succeed({ tip, query, serieSasiu: null, queryPolling: query })
+			if (VIN_REGEX.test(query)) return Effect.succeed({ tip, query, serieSasiu: null, queryPolling: query, serieTalon: null })
 			return Effect.fail(
 				eroare(
 					`\`query\` invalid: se accepta un numar de inmatriculare romanesc (ex: B123ABC) sau o serie de sasiu de ${LUNGIME_VIN} caractere. ${explicaVin(query)}`,
@@ -154,7 +196,7 @@ function valideazaIdentificatori(
 					),
 				)
 			}
-			return Effect.succeed({ tip, query, serieSasiu: serieSasiu || null, queryPolling: vin })
+			return Effect.succeed({ tip, query, serieSasiu: serieSasiu || null, queryPolling: vin, serieTalon: null })
 		}
 		case "arr": {
 			if (!NUMAR_REGEX.test(query)) {
@@ -162,7 +204,7 @@ function valideazaIdentificatori(
 					eroare("Verificarea ARR cere numarul de inmatriculare in `query` (ex: B123ABC). ARR nu cauta dupa VIN.", "query"),
 				)
 			}
-			return Effect.succeed({ tip, query, serieSasiu: null, queryPolling: query })
+			return Effect.succeed({ tip, query, serieSasiu: null, queryPolling: query, serieTalon: null })
 		}
 		case "rovinieta": {
 			if (!NUMAR_REGEX.test(query)) {
@@ -175,7 +217,15 @@ function valideazaIdentificatori(
 					eroare(`Verificarea rovinietei cere si seria de sasiu in \`serieSasiu\`. ${explicaVin(serieSasiu)}`, "serieSasiu"),
 				)
 			}
-			return Effect.succeed({ tip, query, serieSasiu, queryPolling: query })
+			if (!serieTalon) {
+				return Effect.fail(
+					eroare(`Verificarea rovinietei cere si \`serieTalon\`: ${MESAJ_SERIE_TALON}`, "serieTalon"),
+				)
+			}
+			if (!SERIE_TALON_REGEX.test(serieTalon)) {
+				return Effect.fail(eroare(`\`serieTalon\` invalid: se asteapta ${MESAJ_SERIE_TALON}`, "serieTalon"))
+			}
+			return Effect.succeed({ tip, query, serieSasiu, queryPolling: query, serieTalon })
 		}
 	}
 }
@@ -188,9 +238,10 @@ export function valideazaCerereVerificare(cerere: CerereVerificare): Effect.Effe
 	}
 	const query = typeof cerere.query === "string" ? normalizeaza(cerere.query) : ""
 	const serieSasiu = typeof cerere.serieSasiu === "string" ? normalizeaza(cerere.serieSasiu) : ""
+	const serieTalon = typeof cerere.serieTalon === "string" ? normalizeazaSerieTalon(cerere.serieTalon) : ""
 
 	return Effect.all({
-		tinta: valideazaIdentificatori(tip, query, serieSasiu),
+		tinta: valideazaIdentificatori(tip, query, serieSasiu, serieTalon),
 		callbackUrl: valideazaCallbackUrl(cerere.callbackUrl),
 	}).pipe(Effect.map(({ tinta, callbackUrl }) => ({ ...tinta, callbackUrl })))
 }
@@ -201,6 +252,11 @@ export interface VehiculNou {
 	readonly numarInmatriculare?: string
 	/** Seria de sasiu (VIN). Necesara pentru ITP si rovinieta. Maxim 50 de caractere. */
 	readonly serieSasiu?: string
+	/**
+	 * Numarul certificatului de inmatriculare (talon), ex: `I00639603F`. Necesar
+	 * pentru monitorizarea automata a rovinietei: fara el, rovinieta nu se verifica.
+	 */
+	readonly serieTalon?: string
 	/** Monitorizeaza si copia conforma ARR. Cere un plan activ. */
 	readonly arrMonitorizat?: boolean
 }
@@ -217,6 +273,11 @@ export function valideazaVehiculNou(vehicul: VehiculNou): Effect.Effect<Record<s
 		return Effect.fail(eroare("`serieSasiu` poate contine doar litere si cifre (maxim 50).", "serieSasiu"))
 	}
 
+	const serieTalon = vehicul.serieTalon === undefined ? "" : normalizeazaSerieTalon(vehicul.serieTalon)
+	if (serieTalon && !SERIE_TALON_REGEX.test(serieTalon)) {
+		return Effect.fail(eroare(`\`serieTalon\` invalid: se asteapta ${MESAJ_SERIE_TALON}`, "serieTalon"))
+	}
+
 	const numarNormalizat = numar.toUpperCase().replace(/[\s-]+/g, "")
 	const serieNormalizata = serie.toUpperCase()
 	if (!numarNormalizat && !serieNormalizata) {
@@ -226,6 +287,7 @@ export function valideazaVehiculNou(vehicul: VehiculNou): Effect.Effect<Record<s
 	return Effect.succeed({
 		...(numarNormalizat && { numarInmatriculare: numarNormalizat }),
 		...(serieNormalizata && { serieSasiu: serieNormalizata }),
+		...(serieTalon && { serieTalon }),
 		...(vehicul.arrMonitorizat !== undefined && { arrMonitorizat: vehicul.arrMonitorizat }),
 	})
 }

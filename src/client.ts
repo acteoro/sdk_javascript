@@ -7,18 +7,20 @@ import type { Vehicul } from "./schemas.js"
 import type { CerereVerificare, VehiculNou } from "./validare.js"
 
 /** Versiunea acestui SDK, trimisa si in headerul `User-Agent`. */
-export const VERSIUNE_SDK = "0.1.0"
-/** Adresa implicita a API-ului. */
-export const URL_IMPLICIT = "https://www.verificrca.ro"
+export const VERSIUNE_SDK = "0.3.0"
+/** Adresa implicita a API-ului pentru clientul {@link Acteo}. */
+export const URL_IMPLICIT = "https://api.acteo.ro"
+/** Adresa implicita a clientului legacy {@link VerificRca}. */
+export const URL_IMPLICIT_LEGACY = "https://www.verificrca.ro"
 
-/** Optiunile constructorului {@link VerificRca}. Toate sunt optionale. */
+/** Optiunile constructorului {@link Acteo}. Toate sunt optionale. */
 export interface OptiuniClient {
 	/**
-	 * Cheia API (`vrca_...`) din https://www.verificrca.ro/dashboard/api.
-	 * Implicit se citeste din variabila de mediu `VERIFICRCA_API_KEY`.
+	 * Cheia API. Implicit se citeste din variabila de mediu `ACTEO_API_KEY`
+	 * (sau `VERIFICRCA_API_KEY`, daca prima lipseste).
 	 */
 	readonly apiKey?: string
-	/** Adresa API-ului. Implicit `https://www.verificrca.ro`; schimb-o doar pentru medii de test. */
+	/** Adresa API-ului. Implicit `https://api.acteo.ro`; schimb-o doar pentru medii de test. */
 	readonly baseUrl?: string
 	/** Timeout per cerere HTTP. Implicit 30000 ms. */
 	readonly timeoutMs?: number
@@ -47,19 +49,46 @@ function citesteEnv(nume: string): string | undefined {
 	return proces?.env?.[nume]
 }
 
-function construiesteSetari(optiuni: OptiuniClient): SetariClient {
-	const apiKey = (optiuni.apiKey ?? citesteEnv("VERIFICRCA_API_KEY") ?? "").trim()
+/** @internal Ce difera intre clientul {@link Acteo} si cel legacy {@link VerificRca}. */
+export interface ProfilClient {
+	readonly urlImplicit: string
+	/** Variabilele de mediu citite pentru cheie, in ordine. */
+	readonly variabileCheie: readonly string[]
+	/** Prefixul din `User-Agent`. */
+	readonly agent: string
+	/** Unde se genereaza cheia, aratat cand lipseste. */
+	readonly undeCheie: string
+}
+
+/** @internal */
+export const PROFIL_ACTEO: ProfilClient = {
+	urlImplicit: URL_IMPLICIT,
+	variabileCheie: ["ACTEO_API_KEY", "VERIFICRCA_API_KEY"],
+	agent: "acteo-sdk-js",
+	undeCheie: "https://app.acteo.ro/api/chei",
+}
+
+const PROFIL_LEGACY: ProfilClient = {
+	urlImplicit: URL_IMPLICIT_LEGACY,
+	variabileCheie: ["VERIFICRCA_API_KEY"],
+	agent: "verificrca-sdk-js",
+	undeCheie: "https://www.verificrca.ro/dashboard/api",
+}
+
+function construiesteSetari(optiuni: OptiuniClient, profil: ProfilClient): SetariClient {
+	const dinEnv = profil.variabileCheie.map(citesteEnv).find((v) => v?.trim())
+	const apiKey = (optiuni.apiKey ?? dinEnv ?? "").trim()
 	if (!apiKey) {
 		throw new EroareConfigurare({
-			message: "Lipseste cheia API. Trimite `apiKey` sau seteaza variabila de mediu VERIFICRCA_API_KEY.",
-			hint: "Cheia se genereaza din https://www.verificrca.ro/dashboard/api",
+			message: `Lipseste cheia API. Trimite \`apiKey\` sau seteaza variabila de mediu ${profil.variabileCheie[0]}.`,
+			hint: `Cheia se genereaza din ${profil.undeCheie}`,
 		})
 	}
 	if (apiKey.length < 16 || apiKey.length > 128) {
 		throw new EroareConfigurare({ message: "Cheia API are un format invalid (intre 16 si 128 de caractere)." })
 	}
 
-	const baseUrl = optiuni.baseUrl ?? URL_IMPLICIT
+	const baseUrl = optiuni.baseUrl ?? profil.urlImplicit
 	try {
 		new URL(baseUrl)
 	} catch {
@@ -80,12 +109,29 @@ function construiesteSetari(optiuni: OptiuniClient): SetariClient {
 		timeoutMs,
 		retry: optiuni.retry === false ? null : { ...RETRY_IMPLICIT, ...optiuni.retry },
 		fetch: fetchImpl,
-		userAgent: `verificrca-sdk-js/${VERSIUNE_SDK}${optiuni.userAgent ? ` ${optiuni.userAgent}` : ""}`,
+		userAgent: `${profil.agent}/${VERSIUNE_SDK}${optiuni.userAgent ? ` ${optiuni.userAgent}` : ""}`,
 	}
 }
 
-/** Ruleaza un efect intern si il transforma in Promise. */
-type Rulare = <A, E>(efect: Effect.Effect<A, E, Setari>, optiuni?: OptiuniCerere) => Promise<A>
+/** @internal Ruleaza un efect intern si il transforma in Promise. */
+export type Rulare = <A, E>(efect: Effect.Effect<A, E, Setari>, optiuni?: OptiuniCerere) => Promise<A>
+
+/** @internal Valideaza optiunile si intoarce functia care ruleaza efectele interne. */
+export function creeazaRulare(optiuni: OptiuniClient, profil: ProfilClient): Rulare {
+	const setari = construiesteSetari(optiuni, profil)
+	return (efect, opt) =>
+		Effect.runPromiseExit(
+			Effect.provideService(efect, Setari, setari),
+			opt?.signal ? { signal: opt.signal } : undefined,
+		).then((exit) => {
+			if (Exit.isSuccess(exit)) return exit.value
+			if (Cause.isInterruptedOnly(exit.cause)) {
+				throw new VerificRcaError({ message: "Cererea a fost anulata.", cod: "ANULATA" })
+			}
+			// Aruncam eroarea tipata, nu invelisul Effect.
+			throw Cause.squash(exit.cause)
+		})
+}
 
 /**
  * Verificarile la cerere: RCA, ITP, rovinieta si ARR. Il accesezi prin
@@ -114,14 +160,16 @@ export class ClientVerificari {
 	 * Datele sunt validate local inainte de cerere: o greseala de tastare nu
 	 * pleaca pe retea si nu consuma din cota.
 	 *
-	 * @param cerere tipul verificarii, identificatorul si, optional, VIN-ul si `callbackUrl`.
+	 * @param cerere tipul verificarii, identificatorul, VIN-ul (obligatoriu la rovinieta,
+	 *   impreuna cu `serieTalon`) si, optional, `callbackUrl`.
 	 * @param optiuni `signal` pentru anulare.
 	 * @returns rezultatul final sau o {@link VerificareInCurs}.
 	 * @throws {@link EroareValidare} date invalide, local sau HTTP 400.
 	 * @throws {@link EroareAutentificare} cheie API invalida (401).
 	 * @throws {@link EroarePlanInactiv} contul nu are abonament API activ (402).
 	 * @throws {@link EroareLimita} cota zilnica sau lunara atinsa (429, `cod: "COTA_ATINSA"`).
-	 * @throws {@link EroareVerificare} sursa oficiala nu a putut fi interogata.
+	 * @throws {@link EroareVerificare} sursa oficiala nu a putut fi interogata sau a
+	 *   refuzat datele trimise (`codSursa`, ex: `"serie_talon_invalida"`).
 	 * @throws {@link EroareRetea} fara raspuns sau timeout.
 	 * @throws {@link EroareServer} eroare 5xx.
 	 * @example
@@ -182,19 +230,22 @@ export class ClientVerificari {
 	 * Porneste verificarea si asteapta rezultatul final, intr-un singur apel.
 	 * Consuma o unitate din cota (doar pornirea; pollingul e gratuit).
 	 *
-	 * @param cerere tipul verificarii, identificatorul si, optional, VIN-ul si `callbackUrl`.
+	 * @param cerere tipul verificarii, identificatorul, VIN-ul (obligatoriu la rovinieta,
+	 *   impreuna cu `serieTalon`) si, optional, `callbackUrl`.
 	 * @param optiuni `intervalMs`, `timeoutMs` si `signal`, ca la {@link ClientVerificari.asteapta}.
 	 * @returns rezultatul final al verificarii.
 	 * @throws {@link EroareValidare} date invalide, local sau HTTP 400.
 	 * @throws {@link EroareLimita} cota atinsa (`cod: "COTA_ATINSA"`).
 	 * @throws {@link EroareTimeoutVerificare} rezultatul nu a venit in `timeoutMs`.
-	 * @throws {@link EroareVerificare} sursa oficiala nu a putut fi interogata.
+	 * @throws {@link EroareVerificare} sursa oficiala nu a putut fi interogata sau a
+	 *   refuzat datele trimise (`codSursa`, ex: `"serie_talon_invalida"`).
 	 * @throws {@link VerificRcaError} orice alta eroare de la API sau de retea.
 	 * @example
 	 * const rovinieta = await vrca.verificari.verificaSiAsteapta({
 	 *   tip: "rovinieta",
 	 *   query: "B123ABC",
 	 *   serieSasiu: "WVWZZZ1JZXW000001",
+	 *   serieTalon: "I00639603F",
 	 * })
 	 * console.log(rovinieta.status, rovinieta.expiresAt)
 	 */
@@ -207,7 +258,7 @@ export class ClientVerificari {
 }
 
 /**
- * Vehiculele monitorizate din cont. Il accesezi prin `vrca.vehicule`, nu il
+ * Vehiculele monitorizate din cont. Il accesezi prin `acteo.auto.flota`, nu il
  * construiesti direct.
  *
  * Operatiile sunt gratuite (nu consuma din cota de verificari), dar cer un plan
@@ -232,7 +283,7 @@ export class ClientVehicule {
 	 * @throws {@link EroarePlanInactiv} contul nu are un plan activ (402).
 	 * @throws {@link EroareRetea} fara raspuns, dupa reincercari.
 	 * @example
-	 * for (const v of await vrca.vehicule.lista()) {
+	 * for (const v of await acteo.auto.flota.lista()) {
 	 *   console.log(v.numarInmatriculare, v.rcaExpiraLa, v.itpExpiraLa)
 	 * }
 	 */
@@ -242,19 +293,24 @@ export class ClientVehicule {
 
 	/**
 	 * Adauga un vehicul in monitorizare. Trimite cel putin numarul de
-	 * inmatriculare sau seria de sasiu; cu amandoua se pot urmari toate
-	 * documentele (ITP-ul si rovinieta cer VIN).
+	 * inmatriculare sau seria de sasiu. ITP-ul cere VIN, iar rovinieta cere
+	 * numarul, VIN-ul si `serieTalon` (numarul certificatului de inmatriculare);
+	 * fara `serieTalon`, rovinieta nu se verifica.
 	 *
-	 * @param vehicul numarul, VIN-ul si, optional, `arrMonitorizat`.
+	 * @param vehicul numarul, VIN-ul si, optional, `serieTalon` si `arrMonitorizat`.
 	 * @param optiuni `signal` pentru anulare.
 	 * @returns vehiculul creat, cu `id`-ul folosit la stergere.
-	 * @throws {@link EroareValidare} lipseste identificatorul sau are caractere nepermise.
+	 * @throws {@link EroareValidare} lipseste identificatorul, are caractere nepermise sau `serieTalon` e invalida.
 	 * @throws {@link EroareInterzis} `LIMIT_ATINS` (ai atins numarul de masini din plan, vezi `limita`) sau `ARR_NECESITA_PLAN`.
 	 * @throws {@link EroareConflict} vehiculul exista deja in cont (`VEHICUL_EXISTENT`).
 	 * @throws {@link EroareLimita} plafonul zilnic de adaugari prin API (`LIMITA_FLOTA_ATINSA`).
 	 * @throws {@link EroarePlanInactiv} contul nu are un plan activ (402).
 	 * @example
-	 * const v = await vrca.vehicule.adauga({ numarInmatriculare: "B123ABC", serieSasiu: "WVWZZZ1JZXW000001" })
+	 * const v = await acteo.auto.flota.adauga({
+	 *   numarInmatriculare: "B123ABC",
+	 *   serieSasiu: "WVWZZZ1JZXW000001",
+	 *   serieTalon: "I00639603F",
+	 * })
 	 * console.log(v.id)
 	 */
 	adauga(vehicul: VehiculNou, optiuni?: OptiuniCerere): Promise<Vehicul> {
@@ -271,7 +327,7 @@ export class ClientVehicule {
 	 * @throws {@link EroareLimita} plafonul zilnic de stergeri prin API (`LIMITA_FLOTA_ATINSA`).
 	 * @throws {@link EroareValidare} `id` gol.
 	 * @example
-	 * await vrca.vehicule.sterge("6f2c1b9e-0000-4000-8000-000000000001")
+	 * await acteo.auto.flota.sterge("6f2c1b9e-0000-4000-8000-000000000001")
 	 */
 	sterge(id: string, optiuni?: OptiuniCerere): Promise<void> {
 		return this.#ruleaza(opVehicule.sterge(id), optiuni)
@@ -279,7 +335,8 @@ export class ClientVehicule {
 }
 
 /**
- * Clientul API verificrca.ro: verificare RCA, ITP, rovinieta si ARR, plus
+ * Clientul legacy, pastrat pentru codul existent; pentru cod nou foloseste {@link Acteo}.
+ * Verificare RCA, ITP, rovinieta si ARR, plus
  * gestionarea vehiculelor monitorizate.
  *
  * Toate metodele intorc `Promise` si arunca subclase de {@link VerificRcaError}.
@@ -287,7 +344,7 @@ export class ClientVehicule {
  * fara sa repete vreodata o verificare taxata.
  *
  * @example
- * import { VerificRca } from "@verificrca/sdk"
+ * import { VerificRca } from "@acteo/api"
  *
  * const vrca = new VerificRca({ apiKey: process.env.VERIFICRCA_API_KEY })
  * const rca = await vrca.verificari.verificaSiAsteapta({ tip: "rca", query: "B123ABC" })
@@ -313,19 +370,7 @@ export class VerificRca {
 	 * })
 	 */
 	constructor(optiuni: OptiuniClient = {}) {
-		const setari = construiesteSetari(optiuni)
-		const ruleaza: Rulare = (efect, opt) =>
-			Effect.runPromiseExit(
-				Effect.provideService(efect, Setari, setari),
-				opt?.signal ? { signal: opt.signal } : undefined,
-			).then((exit) => {
-				if (Exit.isSuccess(exit)) return exit.value
-				if (Cause.isInterruptedOnly(exit.cause)) {
-					throw new VerificRcaError({ message: "Cererea a fost anulata.", cod: "ANULATA" })
-				}
-				// Aruncam eroarea tipata, nu invelisul Effect.
-				throw Cause.squash(exit.cause)
-			})
+		const ruleaza = creeazaRulare(optiuni, PROFIL_LEGACY)
 		this.verificari = new ClientVerificari(ruleaza)
 		this.vehicule = new ClientVehicule(ruleaza)
 	}
