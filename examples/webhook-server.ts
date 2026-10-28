@@ -1,8 +1,10 @@
 // Server minim care primeste ambele tipuri de webhook, doar cu node:http.
 import { createServer } from "node:http"
-import { EroareWebhook, parseazaWebhookRezultat, verificaWebhookNotificare } from "../src/index.js"
+import { Acteo, EroareWebhook } from "../src/index.js"
 
-const CHEIE_WEBHOOK = process.env.VERIFICRCA_WEBHOOK_KEY ?? ""
+const CHEIE_WEBHOOK = process.env.ACTEO_WEBHOOK_KEY ?? ""
+// Citirea webhook-urilor nu face cereri pe retea; cheia API e ceruta doar de constructor.
+const acteo = new Acteo()
 
 createServer(async (req, res) => {
 	const bucati: Buffer[] = []
@@ -10,11 +12,11 @@ createServer(async (req, res) => {
 	const corp = Buffer.concat(bucati)
 
 	try {
-		if (req.url === "/verificrca/rezultat-9f3k2") {
-			const r = parseazaWebhookRezultat(corp)
+		if (req.url === "/acteo/rezultat-9f3k2") {
+			const r = acteo.webhooks.parseazaRezultat(corp)
 			console.log(`Rezultat ${r.requestId}: ${r.tip} ${r.query} = ${r.status}`)
-		} else if (req.url === "/verificrca/notificari") {
-			const n = verificaWebhookNotificare(corp, req.headers, { cheie: CHEIE_WEBHOOK })
+		} else if (req.url === "/acteo/notificari") {
+			const n = acteo.webhooks.verificaNotificare(corp, req.headers, { cheie: CHEIE_WEBHOOK })
 			if (n.event === "document.expira") {
 				console.log(`${n.vehicul.numarInmatriculare}: ${n.document} expira in ${n.zileRamase} zile`)
 			}

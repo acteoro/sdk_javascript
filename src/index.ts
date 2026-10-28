@@ -33,6 +33,8 @@ export type {
 
 export {
 	VerificRcaError,
+	/** Clasa de baza a tuturor erorilor SDK-ului. Acelasi lucru ca `VerificRcaError`. */
+	VerificRcaError as ActeoError,
 	EroareConfigurare,
 	EroareValidare,
 	EroareAutentificare,

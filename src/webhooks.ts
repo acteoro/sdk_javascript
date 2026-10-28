@@ -76,7 +76,7 @@ function ruleaza<A>(efect: Effect.Effect<A, EroareWebhook>): A {
  * @returns rezultatul tipat, cu datele ca `Date`.
  * @throws {@link EroareWebhook} corpul nu e JSON (`JSON_INVALID`) sau nu e un rezultat valid (`PAYLOAD_INVALID`).
  * @example
- * app.post("/webhooks/verificrca/9f3k2", express.raw({ type: "application/json" }), (req, res) => {
+ * app.post("/webhooks/acteo/9f3k2", express.raw({ type: "application/json" }), (req, res) => {
  *   const r = parseazaWebhookRezultat(req.body)
  *   if (r.status !== "error") salveaza(r.requestId, r.result?.expiresAt)
  *   res.sendStatus(200)

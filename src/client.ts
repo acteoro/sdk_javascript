@@ -258,7 +258,7 @@ export class ClientVerificari {
 }
 
 /**
- * Vehiculele monitorizate din cont. Il accesezi prin `vrca.vehicule`, nu il
+ * Vehiculele monitorizate din cont. Il accesezi prin `acteo.auto.flota`, nu il
  * construiesti direct.
  *
  * Operatiile sunt gratuite (nu consuma din cota de verificari), dar cer un plan
@@ -283,7 +283,7 @@ export class ClientVehicule {
 	 * @throws {@link EroarePlanInactiv} contul nu are un plan activ (402).
 	 * @throws {@link EroareRetea} fara raspuns, dupa reincercari.
 	 * @example
-	 * for (const v of await vrca.vehicule.lista()) {
+	 * for (const v of await acteo.auto.flota.lista()) {
 	 *   console.log(v.numarInmatriculare, v.rcaExpiraLa, v.itpExpiraLa)
 	 * }
 	 */
@@ -306,7 +306,7 @@ export class ClientVehicule {
 	 * @throws {@link EroareLimita} plafonul zilnic de adaugari prin API (`LIMITA_FLOTA_ATINSA`).
 	 * @throws {@link EroarePlanInactiv} contul nu are un plan activ (402).
 	 * @example
-	 * const v = await vrca.vehicule.adauga({
+	 * const v = await acteo.auto.flota.adauga({
 	 *   numarInmatriculare: "B123ABC",
 	 *   serieSasiu: "WVWZZZ1JZXW000001",
 	 *   serieTalon: "I00639603F",
@@ -327,7 +327,7 @@ export class ClientVehicule {
 	 * @throws {@link EroareLimita} plafonul zilnic de stergeri prin API (`LIMITA_FLOTA_ATINSA`).
 	 * @throws {@link EroareValidare} `id` gol.
 	 * @example
-	 * await vrca.vehicule.sterge("6f2c1b9e-0000-4000-8000-000000000001")
+	 * await acteo.auto.flota.sterge("6f2c1b9e-0000-4000-8000-000000000001")
 	 */
 	sterge(id: string, optiuni?: OptiuniCerere): Promise<void> {
 		return this.#ruleaza(opVehicule.sterge(id), optiuni)
@@ -335,7 +335,8 @@ export class ClientVehicule {
 }
 
 /**
- * Clientul API verificrca.ro: verificare RCA, ITP, rovinieta si ARR, plus
+ * Clientul legacy, pastrat pentru codul existent; pentru cod nou foloseste {@link Acteo}.
+ * Verificare RCA, ITP, rovinieta si ARR, plus
  * gestionarea vehiculelor monitorizate.
  *
  * Toate metodele intorc `Promise` si arunca subclase de {@link VerificRcaError}.
@@ -343,7 +344,7 @@ export class ClientVehicule {
  * fara sa repete vreodata o verificare taxata.
  *
  * @example
- * import { VerificRca } from "@verificrca/sdk"
+ * import { VerificRca } from "@acteo/api"
  *
  * const vrca = new VerificRca({ apiKey: process.env.VERIFICRCA_API_KEY })
  * const rca = await vrca.verificari.verificaSiAsteapta({ tip: "rca", query: "B123ABC" })

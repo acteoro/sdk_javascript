@@ -2,7 +2,7 @@
   "$schema": "https://typedoc.org/schema.json",
   "entryPoints": ["src/index.ts"],
   "out": "docs",
-  "name": "@verificrca/sdk",
+  "name": "@acteo/api",
   "readme": "none",
   "excludePrivate": true,
   "excludeInternal": true,

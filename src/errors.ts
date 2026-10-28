@@ -19,7 +19,7 @@ export interface DateEroare {
 
 /**
  * Baza tuturor erorilor aruncate de SDK. `instanceof VerificRcaError` prinde
- * orice eroare de la verificrca, iar `_tag` spune exact care e.
+ * orice eroare de la API, iar `_tag` spune exact care e.
  */
 export class VerificRcaError extends Data.Error<DateEroare> {
 	/** Discriminantul erorii. Fiecare subclasa are propria valoare, ex: `"EroareLimita"`. */
@@ -145,7 +145,7 @@ export class EroareLimita extends VerificRcaError {
 	}
 }
 
-/** 5xx: eroare pe serverul verificrca. Cererile sigure se reincearca automat. */
+/** 5xx: eroare pe serverul API-ului. Cererile sigure se reincearca automat. */
 export class EroareServer extends VerificRcaError {
 	/** Discriminantul erorii: `"EroareServer"`. Util in `switch (err._tag)`. */
 	override readonly _tag = "EroareServer"
