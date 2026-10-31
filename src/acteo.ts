@@ -80,7 +80,6 @@ export class ClientDocument<T extends TipVerificare, I> {
 
 	/**
 	 * Verifica documentul si asteapta rezultatul final de la sursa oficiala.
-	 * Daca vehiculul a fost verificat de curand, rezultatul vine imediat.
 	 *
 	 * @param identificator ce cere sursa oficiala pentru acest document.
 	 * @param optiuni `timeoutMs`, `intervalMs` pentru asteptare si `signal`.
@@ -98,8 +97,7 @@ export class ClientDocument<T extends TipVerificare, I> {
 	}
 
 	/**
-	 * Porneste verificarea fara sa astepte. Primesti rezultatul imediat, daca
-	 * vehiculul a fost verificat de curand, sau `status: "processing"`; atunci
+	 * Porneste verificarea fara sa astepte. Primesti `status: "processing"`;
 	 * afli raspunsul cu {@link ClientDocument.asteapta}, {@link ClientDocument.rezultat}
 	 * sau prin webhook la `callbackUrl`.
 	 *

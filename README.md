@@ -185,7 +185,7 @@ Formatele de număr acceptate: București (`B123ABC`, `B12ABC`), județe (`CJ45X
 
 ## Cum decurge o verificare
 
-1. **Cerere** (`porneste`). Dacă există un rezultat recent pentru mașina respectivă, îl primești imediat. Altfel verificarea intră în coadă și primești `status: "processing"`.
+1. **Cerere** (`porneste`). Fiecare cerere interoghează sursa oficială: verificarea intră în coadă și primești `status: "processing"`.
 2. **Interogarea sursei.** Sursa oficială e consultată în fundal. Dacă nu răspunde în 4 minute, verificarea se încheie cu eroare.
 3. **Rezultatul** ajunge la tine pe una din trei căi:
    - `verifica()` face tot drumul și întoarce direct rezultatul final;
@@ -235,7 +235,7 @@ Disponibil pe `auto.rca`, `auto.itp`, `auto.rovinieta` și `auto.arr`. Pornește
 
 ### `auto.<document>.porneste(identificator, { callbackUrl? })`
 
-Pornește verificarea fără să aștepte. Întoarce fie rezultatul final (dacă există unul recent), fie un obiect `VerificareInCurs` pe care îl dai mai departe la `rezultat()` sau `asteapta()`.
+Pornește verificarea fără să aștepte. Întoarce un obiect `VerificareInCurs` pe care îl dai mai departe la `rezultat()` sau `asteapta()`.
 
 ```ts
 const r = await acteo.auto.itp.porneste("WVWZZZ1JZXW000001", {
@@ -449,7 +449,7 @@ const acteo = new Acteo({
 
 ## Cotă și limite
 
-Fiecare verificare consumă o unitate din cota zilnică și lunară a planului, dar numai când sursa oficială a răspuns. Decodarea VIN, numerele disponibile și pozele au fiecare abonamentul și cota lor: decodarea se taxează doar cu marcă și model găsite, numărul doar când DGPCI dă un verdict, iar poza doar când e gata. Decodările fără rezultat și pozele generice au un plafon zilnic separat. Dacă mașina a fost verificată de curând, primești imediat rezultatul existent, iar cererea consumă din cotă. Dacă sursa nu răspunde, nu consumi nimic. Verificările încă în curs ocupă cota până la răspuns, ca să nu treci de limită cu cereri trimise în paralel.
+Fiecare verificare consumă o unitate din cota zilnică și lunară a planului, dar numai când sursa oficială a răspuns. Decodarea VIN, numerele disponibile și pozele au fiecare abonamentul și cota lor: decodarea se taxează doar cu marcă și model găsite, numărul doar când DGPCI dă un verdict, iar poza doar când e gata. Decodările fără rezultat și pozele generice au un plafon zilnic separat. Dacă sursa nu răspunde, nu consumi nimic. Verificările încă în curs ocupă cota până la răspuns, ca să nu treci de limită cu cereri trimise în paralel.
 
 Rezultatele (inclusiv decodările, numerele și pozele) au câmpul `limite`, completat din headerele `X-RateLimit-*`:
 

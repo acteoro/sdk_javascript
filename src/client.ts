@@ -151,9 +151,8 @@ export class ClientVerificari {
 	/**
 	 * Porneste o verificare si consuma o unitate din cota planului.
 	 *
-	 * Daca vehiculul a fost verificat de curand, primesti imediat rezultatul
-	 * existent. Altfel verificarea intra in
-	 * coada si primesti `status: "processing"`; rezultatul il afli cu
+	 * Fiecare cerere interogheaza sursa oficiala: verificarea intra in coada si
+	 * primesti `status: "processing"`; rezultatul il afli cu
 	 * {@link ClientVerificari.rezultat}, {@link ClientVerificari.asteapta} sau
 	 * prin webhook, daca ai trimis `callbackUrl`.
 	 *
