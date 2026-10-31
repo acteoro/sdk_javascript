@@ -7,7 +7,7 @@ import type { Vehicul } from "./schemas.js"
 import type { CerereVerificare, VehiculNou } from "./validare.js"
 
 /** Versiunea acestui SDK, trimisa si in headerul `User-Agent`. */
-export const VERSIUNE_SDK = "0.3.0"
+export const VERSIUNE_SDK = "0.4.0"
 /** Adresa implicita a API-ului pentru clientul {@link Acteo}. */
 export const URL_IMPLICIT = "https://api.acteo.ro"
 /** Adresa implicita a clientului legacy {@link VerificRca}. */

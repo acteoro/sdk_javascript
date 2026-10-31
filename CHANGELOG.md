@@ -1,5 +1,14 @@
 # Changelog
 
+## @acteo/api 0.4.0 (2026-10-31)
+
+- Corectură: `verificaNotificare()` (și `verificaWebhookNotificare()`) citește cheia din headerul `X-Acteo-Key`, cel trimis acum de API. Până acum căuta doar `X-Verificrca-Key`, așa că notificările reale erau respinse cu `CHEIE_INVALIDA`. Headerul vechi e citit în continuare când lipsește cel nou. `HEADER_CHEIE_WEBHOOK` e acum `"x-acteo-key"`, iar `HEADER_EVENIMENT_WEBHOOK` e `"x-acteo-event"`.
+- `verificaNotificare()` acceptă și evenimentele celorlalte servicii: `dosar.eveniment`, `dosar.termen`, `firma.schimbare`, `firma.dosar`, `marca.schimbare`, `marca.expira`, `asigurare.schimbare` și `termen.expira`, fiecare cu tipul lui.
+- `acteo.auto.vin.decodeaza(vin)`: decodarea VIN.
+- `acteo.auto.numere.verifica(numar)`: dacă un număr de înmatriculare e liber la DGPCI, cu un timeout de cel puțin 150 de secunde pentru această cerere.
+- `acteo.auto.imagini.obtine()` și `asteapta()`: poza de studio a unei mașini.
+- Răspunsurile 422 devin `EroareValidare`. `EroareServer` are `retryAfterMs`. Un 503 `OCUPAT` se reîncearcă după `Retry-After`. Un 5xx cu alt cod din partea API-ului nu se mai repetă la POST.
+
 ## @acteo/api 0.3.0 (2026-10-29)
 
 Pachetul `@verificrca/sdk` continuă sub numele `@acteo/api`, cu apelurile grupate pe domeniu și pe document. Vezi secțiunea „Vii de la @verificrca/sdk?” din README.

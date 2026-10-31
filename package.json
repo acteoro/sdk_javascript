@@ -1,7 +1,7 @@
 {
     "name": "@acteo/api",
-    "version": "0.3.0",
-    "description": "SDK oficial Node.js pentru API-ul public Acteo: verificare RCA, ITP, rovinieta si copie conforma ARR dupa numar de inmatriculare sau serie de sasiu (VIN), plus gestionarea flotei si webhook-uri.",
+    "version": "0.4.0",
+    "description": "SDK oficial Node.js pentru API-ul public Acteo: verificare RCA, ITP, rovinieta si copie conforma ARR dupa numar de inmatriculare sau serie de sasiu (VIN), plus decodare VIN, numere de inmatriculare disponibile, poze de masini, gestionarea flotei si webhook-uri.",
     "keywords": [
         "acteo",
         "verificrca",
@@ -26,6 +26,13 @@
         "vin lookup",
         "certificat inmatriculare",
         "serie talon",
+        "decodare vin",
+        "vin decoder",
+        "numere disponibile",
+        "numar inmatriculare disponibil",
+        "dgpci",
+        "imagini masini",
+        "poze masini",
         "vehicle insurance",
         "vehicle inspection",
         "road tax",

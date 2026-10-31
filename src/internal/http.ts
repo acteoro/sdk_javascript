@@ -46,6 +46,8 @@ export interface Cerere {
 	readonly body?: unknown
 	/** Cererea poate fi repetata fara efecte in plus (GET, DELETE). */
 	readonly idempotenta: boolean
+	/** Timeout minim pentru aceasta cerere, peste cel din setari (ex: raspunsuri sincrone lente). */
+	readonly timeoutMinimMs?: number
 }
 
 export interface Raspuns {
@@ -98,6 +100,9 @@ export function eroareDinRaspuns(status: number, headers: Headers, body: unknown
 	switch (status) {
 		case 400:
 			return new EroareValidare({ ...comun, ...(c?.accepted && { acceptate: c.accepted }) })
+		// 422: sursa oficiala refuza valoarea trimisa (ex: NUMAR_RESPINS).
+		case 422:
+			return new EroareValidare(comun)
 		case 401:
 			return new EroareAutentificare(comun)
 		case 402:
@@ -119,8 +124,11 @@ export function eroareDinRaspuns(status: number, headers: Headers, body: unknown
 				...(c?.monthlyUsage !== undefined && { utilizareLuna: c.monthlyUsage }),
 			})
 		}
-		default:
-			return status >= 500 ? new EroareServer(comun) : new EroareHttp(comun)
+		default: {
+			if (status < 500) return new EroareHttp(comun)
+			const retryAfterMs = citesteRetryAfter(headers)
+			return new EroareServer({ ...comun, ...(retryAfterMs !== undefined && { retryAfterMs }) })
+		}
 	}
 }
 
@@ -137,6 +145,7 @@ const trimiteOData = (cerere: Cerere): Effect.Effect<Raspuns, EroareCerere, Seta
 	Effect.gen(function* () {
 		const s = yield* Setari
 		const url = construiesteUrl(s.baseUrl, cerere)
+		const timeoutMs = Math.max(s.timeoutMs, cerere.timeoutMinimMs ?? 0)
 		const headers: Record<string, string> = {
 			Authorization: `Bearer ${s.apiKey}`,
 			Accept: "application/json",
@@ -160,10 +169,10 @@ const trimiteOData = (cerere: Cerere): Effect.Effect<Raspuns, EroareCerere, Seta
 				}),
 		}).pipe(
 			Effect.timeoutFail({
-				duration: Duration.millis(s.timeoutMs),
+				duration: Duration.millis(timeoutMs),
 				onTimeout: () =>
 					new EroareRetea({
-						message: `Cererea ${cerere.metoda} ${cerere.cale} a depasit ${s.timeoutMs} ms.`,
+						message: `Cererea ${cerere.metoda} ${cerere.cale} a depasit ${timeoutMs} ms.`,
 						timeout: true,
 					}),
 			}),
@@ -202,8 +211,14 @@ export function sePoateReincerca(cerere: Cerere, eroare: EroareCerere, retry: Se
 		case "EroareRetea":
 			return cerere.idempotenta || eroare.neajunsa === true
 		case "EroareServer":
-			// 502/503/504 vin de la proxy: cererea nu a ajuns la aplicatie.
-			return cerere.idempotenta || eroare.status === 502 || eroare.status === 503 || eroare.status === 504
+			if (cerere.idempotenta) return true
+			// Cu `cod`, a raspuns chiar API-ul si cererea nu s-a taxat. Reincercam doar
+			// `OCUPAT`, care trece in cateva secunde; restul nu se rezolva repetand.
+			if (eroare.cod !== undefined) {
+				return eroare.cod === "OCUPAT" && (eroare.retryAfterMs ?? 0) <= retry.intarziereMaximaMs
+			}
+			// 502/503/504 fara cod vin de la proxy: cererea nu a ajuns la aplicatie.
+			return eroare.status === 502 || eroare.status === 503 || eroare.status === 504
 		case "EroareLimita":
 			// Doar throttle-ul de polling e trecator; cota si plafonul de flota nu se reseteaza in secunde.
 			return (
@@ -228,7 +243,7 @@ export function politicaRetry(retry: SetariRetry): Schedule.Schedule<unknown, Er
 	)
 	return Schedule.intersect(Schedule.identity<EroareCerere>(), backoff).pipe(
 		Schedule.modifyDelay(([eroare], d) =>
-			eroare._tag === "EroareLimita" && eroare.retryAfterMs !== undefined
+			(eroare._tag === "EroareLimita" || eroare._tag === "EroareServer") && eroare.retryAfterMs !== undefined
 				? Duration.max(d, Duration.millis(eroare.retryAfterMs))
 				: d,
 		),

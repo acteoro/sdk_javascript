@@ -38,7 +38,8 @@ export class EroareConfigurare extends VerificRcaError {
 
 /**
  * Datele trimise sunt invalide. Apare fie local, inainte de orice cerere (nu se
- * consuma nimic din cota), fie ca raspuns 400 de la API.
+ * consuma nimic din cota), fie ca raspuns 400 de la API, fie ca 422 cand sursa
+ * oficiala refuza valoarea (ex: `NUMAR_RESPINS` la numerele disponibile).
  */
 export class EroareValidare extends VerificRcaError {
 	/** Discriminantul erorii: `"EroareValidare"`. Util in `switch (err._tag)`. */
@@ -145,12 +146,27 @@ export class EroareLimita extends VerificRcaError {
 	}
 }
 
-/** 5xx: eroare pe serverul API-ului. Cererile sigure se reincearca automat. */
+/**
+ * 5xx: eroare pe serverul API-ului. Cererile sigure se reincearca automat. La
+ * numerele disponibile, `cod` spune de ce: `OCUPAT`, `INDISPONIBIL`,
+ * `EROARE_DGPCI` sau `TIMEOUT`; cererea nu s-a taxat.
+ */
 export class EroareServer extends VerificRcaError {
 	/** Discriminantul erorii: `"EroareServer"`. Util in `switch (err._tag)`. */
 	override readonly _tag = "EroareServer"
 	/** Numele clasei, afisat in loguri si in stack trace. */
 	override readonly name = "EroareServer"
+	/** Cat sa astepti inainte de o cerere noua, din headerul `Retry-After`. */
+	declare readonly retryAfterMs?: number
+
+	/**
+	 * Creeaza eroarea. SDK-ul o construieste singur; o creezi manual doar in teste.
+	 *
+	 * @param args mesajul, detaliile comune ({@link DateEroare}) si `retryAfterMs`.
+	 */
+	constructor(args: DateEroare & { readonly retryAfterMs?: number }) {
+		super(args)
+	}
 }
 
 /** Orice alt status HTTP neasteptat. */
@@ -222,7 +238,7 @@ export class EroareVerificare extends VerificRcaError {
 	}
 }
 
-/** `verificaSiAsteapta` a depasit timpul maxim de asteptare. */
+/** Asteptarea unei verificari (`verifica`, `asteapta`) sau a unei poze (`imagini.asteapta`) a depasit timpul maxim. */
 export class EroareTimeoutVerificare extends VerificRcaError {
 	/** Discriminantul erorii: `"EroareTimeoutVerificare"`. Util in `switch (err._tag)`. */
 	override readonly _tag = "EroareTimeoutVerificare"
