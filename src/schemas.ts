@@ -33,7 +33,7 @@ export const RezultatVerificareSchema = Schema.Struct({
 	numarInmatriculare: Schema.NullOr(Schema.String),
 	/** Seria de sasiu (VIN) verificata, `null` cand cautarea s-a facut doar dupa numar. */
 	serieSasiu: Schema.NullOr(Schema.String),
-	/** Cand a fost interogata sursa oficiala. */
+	/** Momentul verificarii. */
 	checkedAt: Schema.Date,
 	/** Starea documentului. Vezi {@link StatusDocument}. */
 	status: StatusDocument,
@@ -141,7 +141,7 @@ export const WebhookRezultatSchema = Schema.Struct({
 	status: Schema.Union(StatusDocument, Schema.Literal("error")),
 	/** Rezultatul complet, `null` la `status: "error"`. */
 	result: Schema.NullOr(RezultatVerificareSchema),
-	/** Cand a fost interogata sursa, `null` la eroare. */
+	/** Momentul verificarii, `null` la eroare. */
 	checkedAt: DataNullabila,
 	/** Mesajul de eroare, doar la `status: "error"`. */
 	error: Schema.optional(Schema.String),
