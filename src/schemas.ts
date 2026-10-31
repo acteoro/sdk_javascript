@@ -192,6 +192,387 @@ export const WebhookTestSchema = Schema.Struct({
 /** Evenimentul trimis de butonul de test din dashboard. */
 export type WebhookTest = typeof WebhookTestSchema.Type
 
-export const WebhookNotificareSchema = Schema.Union(WebhookDocumentExpiraSchema, WebhookTestSchema)
+// Evenimentele celorlalte servicii (add-on-ul Webhook). `id` e unic per livrare
+// si ramane acelasi la reincercari.
+
+const DosarWebhook = Schema.Struct({
+	/** ID-ul dosarului in cont. */
+	id: Schema.String,
+	/** Numarul dosarului la instanta, ex: `1234/3/2024`. */
+	numar: Schema.String,
+	/** Eticheta pusa de tine in cont. */
+	eticheta: Schema.NullOr(Schema.String),
+})
+
+/** Evenimentul `dosar.eveniment`: noutate intr-un dosar monitorizat. */
+export const WebhookDosarEvenimentSchema = Schema.Struct({
+	/** Numele evenimentului. */
+	event: Schema.Literal("dosar.eveniment"),
+	/** ID unic al livrarii. Foloseste-l pentru deduplicare. */
+	id: Schema.String,
+	/** Cand a fost trimisa notificarea. */
+	trimisLa: Schema.Date,
+	/** Dosarul monitorizat. */
+	dosar: DosarWebhook,
+	/** Ce s-a intamplat in dosar. */
+	eveniment: Schema.Struct({
+		/**
+		 * `termen_nou` (sedinta noua), `solutie`, `cale_atac` (apel, recurs), `stadiu`,
+		 * `instanta_noua` sau `incheiat_auto` (180 de zile fara noutati: dosarul nu mai e monitorizat).
+		 */
+		tip: Schema.Literal("termen_nou", "solutie", "cale_atac", "stadiu", "instanta_noua", "incheiat_auto"),
+		/** Textul alertei, ca in email. */
+		descriere: Schema.String,
+		/** Instanta, cand e cunoscuta. */
+		institutie: Schema.NullOr(Schema.String),
+	}),
+})
+/** Noutate intr-un dosar monitorizat. */
+export type WebhookDosarEveniment = typeof WebhookDosarEvenimentSchema.Type
+
+/** Evenimentul `dosar.termen`: se apropie o sedinta intr-un dosar monitorizat. */
+export const WebhookDosarTermenSchema = Schema.Struct({
+	/** Numele evenimentului. */
+	event: Schema.Literal("dosar.termen"),
+	/** ID unic al livrarii. Foloseste-l pentru deduplicare. */
+	id: Schema.String,
+	/** Cand a fost trimisa notificarea. */
+	trimisLa: Schema.Date,
+	/** Dosarul monitorizat. */
+	dosar: DosarWebhook,
+	/** Sedinta care se apropie. */
+	sedinta: Schema.Struct({
+		/** Data sedintei. */
+		data: Schema.Date,
+		/** Ora sedintei, cand e cunoscuta. */
+		ora: Schema.NullOr(Schema.String),
+		/** Instanta. */
+		institutie: Schema.NullOr(Schema.String),
+		/** Completul de judecata. */
+		complet: Schema.NullOr(Schema.String),
+	}),
+	/** Reminder cu 3 zile si cu o zi inainte de sedinta. */
+	zileRamase: Schema.Literal(1, 3),
+})
+/** Se apropie o sedinta intr-un dosar monitorizat. */
+export type WebhookDosarTermen = typeof WebhookDosarTermenSchema.Type
+
+const FirmaWebhook = Schema.Struct({
+	/** ID-ul firmei in cont. */
+	id: Schema.String,
+	/** Denumirea firmei. */
+	denumire: Schema.String,
+})
+
+/** Evenimentul `firma.schimbare`: ANAF a schimbat starea unei firme monitorizate. */
+export const WebhookFirmaSchimbareSchema = Schema.Struct({
+	/** Numele evenimentului. */
+	event: Schema.Literal("firma.schimbare"),
+	/** ID unic al livrarii. Foloseste-l pentru deduplicare. */
+	id: Schema.String,
+	/** Cand a fost trimisa notificarea. */
+	trimisLa: Schema.Date,
+	/** Firma monitorizata. */
+	firma: FirmaWebhook,
+	/** Campurile schimbate. */
+	schimbari: Schema.Array(
+		Schema.Struct({
+			/** Campul schimbat. */
+			camp: Schema.Literal(
+				"radiata",
+				"inactiv",
+				"platitor_tva",
+				"tva_la_incasare",
+				"split_tva",
+				"e_factura",
+				"denumire",
+				"adresa",
+				"caen",
+			),
+			/** Valoarea dinainte (`"da"` / `"nu"` sau textul ANAF); `null` cand nu e cunoscuta. */
+			valoareVeche: Schema.NullOr(Schema.String),
+			/** Valoarea de acum. */
+			valoareNoua: Schema.String,
+			/** Data (`yyyy-mm-dd`) de la care se aplica, cand ANAF o da. */
+			dataEfect: Schema.NullOr(Schema.String),
+		}),
+	),
+})
+/** ANAF a schimbat starea unei firme monitorizate. */
+export type WebhookFirmaSchimbare = typeof WebhookFirmaSchimbareSchema.Type
+
+/** Evenimentul `firma.dosar`: dosar nou in instanta pe numele unei firme monitorizate. */
+export const WebhookFirmaDosarSchema = Schema.Struct({
+	/** Numele evenimentului. */
+	event: Schema.Literal("firma.dosar"),
+	/** ID unic al livrarii. Foloseste-l pentru deduplicare. */
+	id: Schema.String,
+	/** Cand a fost trimisa notificarea. */
+	trimisLa: Schema.Date,
+	/** Firma monitorizata. */
+	firma: FirmaWebhook,
+	/** Dosarul nou. */
+	dosar: Schema.Struct({
+		/** Numarul dosarului. */
+		numar: Schema.String,
+		/** Instanta. */
+		institutie: Schema.String,
+		/** Calitatea firmei in dosar. */
+		calitateParte: Schema.NullOr(Schema.String),
+		/** Obiectul dosarului. */
+		obiect: Schema.NullOr(Schema.String),
+		/** Categoria de pe portalul instantelor (ex: Faliment). */
+		categorie: Schema.NullOr(Schema.String),
+		/**
+		 * Dosar de insolventa: `debitor` (firma e in procedura), `creditor` (are de
+		 * recuperat bani in procedura altcuiva), `alta`; `null` pentru alt fel de dosar.
+		 */
+		insolventa: Schema.NullOr(Schema.Literal("debitor", "creditor", "alta")),
+	}),
+})
+/** Dosar nou pe numele unei firme monitorizate. */
+export type WebhookFirmaDosar = typeof WebhookFirmaDosarSchema.Type
+
+const MarcaWebhook = Schema.Struct({
+	/** ID-ul marcii in cont. */
+	id: Schema.String,
+	/** ID-ul marcii in TMview (oficiul + numarul). */
+	st13: Schema.String,
+	/** Numele marcii. */
+	nume: Schema.String,
+	/** `RO` = OSIM, `EM` = EUIPO (marca a Uniunii Europene). */
+	oficiu: Schema.Literal("RO", "EM"),
+	/** Numarul de depozit. */
+	numarDepozit: Schema.String,
+})
+
+/** Evenimentul `marca.schimbare`: s-a schimbat ceva la o marca urmarita. */
+export const WebhookMarcaSchimbareSchema = Schema.Struct({
+	/** Numele evenimentului. */
+	event: Schema.Literal("marca.schimbare"),
+	/** ID unic al livrarii. Foloseste-l pentru deduplicare. */
+	id: Schema.String,
+	/** Cand a fost trimisa notificarea. */
+	trimisLa: Schema.Date,
+	/** Marca urmarita. */
+	marca: MarcaWebhook,
+	/** Ce s-a schimbat; `inregistrata` = cererea in curs a devenit marca inregistrata. */
+	schimbare: Schema.Literal("inregistrata", "reinnoita", "expirata", "anulata", "respinsa", "retrasa", "opozitie"),
+	/** La `reinnoita`: vechea data de expirare (`yyyy-mm-dd`); la `opozitie`: numarul vechi de opozitii; altfel statusul vechi. */
+	valoareVeche: Schema.String,
+	/** Ca `valoareVeche`, valoarea de acum. */
+	valoareNoua: Schema.String,
+})
+/** S-a schimbat ceva la o marca urmarita (OSIM sau EUIPO). */
+export type WebhookMarcaSchimbare = typeof WebhookMarcaSchimbareSchema.Type
+
+/** Evenimentul `marca.expira`: o marca urmarita intra intr-un prag de expirare. */
+export const WebhookMarcaExpiraSchema = Schema.Struct({
+	/** Numele evenimentului. */
+	event: Schema.Literal("marca.expira"),
+	/** ID unic al livrarii. Foloseste-l pentru deduplicare. */
+	id: Schema.String,
+	/** Cand a fost trimisa notificarea. */
+	trimisLa: Schema.Date,
+	/** Marca urmarita. */
+	marca: MarcaWebhook,
+	/** Data expirarii, `yyyy-mm-dd`. */
+	expiraLa: Schema.String,
+	/** `6l`, `3l`, `1l` (luni), `7z` (zile) inainte; `gratie` = a expirat, se mai poate reinnoi cu taxa. */
+	prag: Schema.Literal("6l", "3l", "1l", "7z", "gratie"),
+	/** La `gratie`: ultima zi (`yyyy-mm-dd`) in care se mai poate reinnoi; altfel `null`. */
+	reinnoirePanaLa: Schema.NullOr(Schema.String),
+})
+/** O marca urmarita intra intr-un prag de expirare. */
+export type WebhookMarcaExpira = typeof WebhookMarcaExpiraSchema.Type
+
+/** Evenimentul `asigurare.schimbare`: s-a schimbat statutul de asigurat la CNAS. */
+export const WebhookAsigurareSchimbareSchema = Schema.Struct({
+	/** Numele evenimentului. */
+	event: Schema.Literal("asigurare.schimbare"),
+	/** ID unic al livrarii. Foloseste-l pentru deduplicare. */
+	id: Schema.String,
+	/** Cand a fost trimisa notificarea. */
+	trimisLa: Schema.Date,
+	/** Persoana monitorizata. */
+	persoana: Schema.Struct({
+		/** ID-ul persoanei in cont. */
+		id: Schema.String,
+		/** Numele persoanei. */
+		nume: Schema.String,
+	}),
+	/** Statutul de acum. */
+	statut: Schema.Literal("asigurat", "neasigurat", "necunoscut"),
+	/** Cardul de sanatate e emis; `null` cand CNAS nu spune. */
+	areCard: Schema.NullOr(Schema.Boolean),
+	/** Cand a fost interogat CNAS. */
+	verificatLa: Schema.Date,
+})
+/** S-a schimbat statutul de asigurat la CNAS al unei persoane monitorizate. */
+export type WebhookAsigurareSchimbare = typeof WebhookAsigurareSchimbareSchema.Type
+
+/** Evenimentul `termen.expira`: un termen din cont intra in pragul de 30 sau de 3 zile. */
+export const WebhookTermenExpiraSchema = Schema.Struct({
+	/** Numele evenimentului. */
+	event: Schema.Literal("termen.expira"),
+	/** ID unic al livrarii. Foloseste-l pentru deduplicare. */
+	id: Schema.String,
+	/** Cand a fost trimisa notificarea. */
+	trimisLa: Schema.Date,
+	/** Termenul din cont. */
+	termen: Schema.Struct({
+		/** ID-ul termenului in cont. */
+		id: Schema.String,
+		/** `auto`, `personale`, `sanatate`, `afaceri` sau `casa`. */
+		categorie: Schema.String,
+		/** Tipul termenului. */
+		tip: Schema.String,
+		/** Numele termenului, ex: Pasaport sau numele dat de tine. */
+		eticheta: Schema.String,
+		/** Al cui e termenul: numarul masinii, firma sau persoana. */
+		al: Schema.NullOr(Schema.String),
+		/** Data scadentei, `yyyy-mm-dd`. */
+		expiraLa: Schema.String,
+	}),
+	/** Zile intregi ramase pana la scadenta. */
+	zileRamase: Schema.Number,
+	/** Pragul atins, in zile. */
+	prag: Schema.Literal(30, 3),
+})
+/** Un termen adaugat in cont intra in pragul de 30 sau de 3 zile. */
+export type WebhookTermenExpira = typeof WebhookTermenExpiraSchema.Type
+
+export const WebhookNotificareSchema = Schema.Union(
+	WebhookDocumentExpiraSchema,
+	WebhookDosarEvenimentSchema,
+	WebhookDosarTermenSchema,
+	WebhookFirmaSchimbareSchema,
+	WebhookFirmaDosarSchema,
+	WebhookMarcaSchimbareSchema,
+	WebhookMarcaExpiraSchema,
+	WebhookAsigurareSchimbareSchema,
+	WebhookTermenExpiraSchema,
+	WebhookTestSchema,
+)
 /** Orice notificare trimisa la URL-ul de webhook al contului. Distinge-le dupa `event`. */
 export type WebhookNotificare = typeof WebhookNotificareSchema.Type
+
+// ─── Decodare VIN ────────────────────────────────────────────────────────────
+
+export const DecodareVinSchema = Schema.Struct({
+	/** VIN-ul normalizat. */
+	vin: Schema.String,
+	/** Marca e cunoscuta. */
+	gasit: Schema.Boolean,
+	/** S-a consumat o cerere din plan: doar cand marca si modelul sunt gasite. */
+	taxat: Schema.Boolean,
+	/** Marca, cand e gasita. */
+	marca: Schema.NullOr(Schema.String),
+	/** Modelul, cand e gasit. */
+	model: Schema.NullOr(Schema.String),
+	/** Anul fabricatiei, cand e cunoscut. */
+	anFabricatie: Schema.NullOr(Schema.Number),
+	/** De unde vine anul: `pozitia-10` confirmata, startul `generatie` sau `anunturi`. */
+	sursaAn: Schema.NullOr(Schema.Literal("pozitia-10", "generatie", "anunturi")),
+	/** Modelele posibile, cand sursele nu cad de acord. Mereu gol cand `taxat` e `false`. */
+	modelePosibile: Schema.Array(Schema.String),
+	/** Structura VIN-ului, calculata doar din cele 17 caractere. */
+	structura: Schema.Struct({
+		/** Pozitiile 1-3: producatorul. */
+		wmi: Schema.String,
+		/** Pozitiile 4-9: descrierea vehiculului. */
+		vds: Schema.String,
+		/** Pozitiile 10-17: exemplarul. */
+		vis: Schema.String,
+		/** Regiunea producatorului. */
+		regiune: Schema.NullOr(Schema.String),
+		/** Tara producatorului. */
+		tara: Schema.NullOr(Schema.String),
+		/** Cifra de control (pozitia 9): `ok`, `gresita` sau `neaplicabila`. */
+		cifraControl: Schema.Literal("ok", "gresita", "neaplicabila"),
+		/** Cifra de control asteptata, cand se aplica. */
+		cifraControlAsteptata: Schema.NullOr(Schema.String),
+		/** Anii de fabricatie posibili dupa pozitia 10. */
+		aniPosibili: Schema.Array(Schema.Number),
+	}),
+})
+/** Rezultatul decodarii unui VIN. */
+export type DecodareVin = typeof DecodareVinSchema.Type
+
+// ─── Numere disponibile ──────────────────────────────────────────────────────
+
+export const NumarDisponibilSchema = Schema.Struct({
+	/** Numarul normalizat. */
+	numar: Schema.String,
+	/** Numarul e liber la DGPCI si poate fi rezervat. */
+	disponibil: Schema.Boolean,
+	/** Textul intors de DGPCI, cand exista. */
+	mesaj: Schema.NullOr(Schema.String),
+})
+/** Raspunsul DGPCI pentru un numar de inmatriculare. */
+export type NumarDisponibil = typeof NumarDisponibilSchema.Type
+
+// ─── Imagini masini ──────────────────────────────────────────────────────────
+
+/** Unghiurile pozei. */
+export const UnghiImagine = Schema.Literal(
+	"trei-sferturi",
+	"fata",
+	"profil",
+	"spate",
+	"trei-sferturi-dreapta",
+	"profil-dreapta",
+)
+/** Unghiul pozei: `"trei-sferturi"` (implicit), `"fata"`, `"profil"`, `"spate"`, `"trei-sferturi-dreapta"`, `"profil-dreapta"`. */
+export type UnghiImagine = typeof UnghiImagine.Type
+
+/**
+ * Starea pozei:
+ * - `gata`: poza masinii cerute (se taxeaza);
+ * - `in-lucru`: o randam acum; revino dupa `retryAfterMs`;
+ * - `necunoscut`: marca sau modelul nu au fost identificate;
+ * - `indisponibil`: randarea a esuat; se reincearca la prima cerere dupa 24h.
+ *
+ * In afara de `gata`, primesti poza generica (masina sub husa), netaxata.
+ */
+export const StatusImagine = Schema.Literal("gata", "in-lucru", "necunoscut", "indisponibil")
+/** Starea pozei. Vezi {@link StatusImagine}. */
+export type StatusImagine = typeof StatusImagine.Type
+
+export const ImagineMasinaSchema = Schema.Struct({
+	/** Poza e a masinii cerute; `false` = poza generica (masina sub husa). */
+	gata: Schema.Boolean,
+	/** Starea pozei. Vezi {@link StatusImagine}. */
+	status: StatusImagine,
+	/** S-a consumat o cerere din plan: doar cand `status` e `gata`. */
+	taxat: Schema.Boolean,
+	/** Link semnat spre poza (WebP transparent), valabil pana la `expiraLa`. `null` doar daca nici poza generica nu e disponibila. */
+	url: Schema.NullOr(Schema.String),
+	/** Cand expira `url`. `null` cand `url` e `null`. */
+	expiraLa: DataNullabila,
+	/** Unghiul pozei. */
+	unghi: UnghiImagine,
+	/** Poza are umbra sub masina. */
+	umbra: Schema.Boolean,
+	/** Latimea pozei, in pixeli. */
+	latime: Schema.Number,
+	/** Inaltimea pozei, in pixeli. */
+	inaltime: Schema.Number,
+	/** Marca canonica, sau cea trimisa daca inca nu e cunoscuta. */
+	marca: Schema.String,
+	/** Modelul canonic, sau cel trimis daca inca nu e cunoscut. */
+	model: Schema.String,
+	/** Generatia aleasa dupa an; `null` cand nu e aleasa inca. */
+	generatie: Schema.NullOr(
+		Schema.Struct({
+			/** Numele generatiei, ex: `Volkswagen Golf VII`. */
+			eticheta: Schema.String,
+			/** Primul an al generatiei. */
+			anDe: Schema.Number,
+			/** Ultimul an; `null` = inca in productie. */
+			anPana: Schema.NullOr(Schema.Number),
+			/** Caroseria, ex: `5-door hatchback`. */
+			caroserie: Schema.String,
+		}),
+	),
+})

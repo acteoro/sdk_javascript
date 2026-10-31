@@ -1,9 +1,10 @@
 /**
  * @acteo/api: clientul oficial Node.js pentru API-ul public Acteo.
- * Verificare RCA, ITP, rovinieta si copie conforma ARR, flota si webhook-uri.
+ * Verificare RCA, ITP, rovinieta si copie conforma ARR, flota, decodare VIN,
+ * numere disponibile, poze de masini si webhook-uri.
  */
 
-export { Acteo, ClientAuto, ClientDocument, ClientWebhooks } from "./acteo.js"
+export { Acteo, ClientAuto, ClientDocument, ClientImagini, ClientNumere, ClientVin, ClientWebhooks } from "./acteo.js"
 export type {
 	ClientArr,
 	ClientItp,
@@ -30,6 +31,7 @@ export type {
 	VerificareFinala,
 	VerificareInCurs,
 } from "./internal/verificari.js"
+export type { DecodareVin, ImagineMasina, NumarDisponibil, OptiuniAsteptareImagine } from "./internal/produse.js"
 
 export {
 	VerificRcaError,
@@ -56,11 +58,21 @@ export type { DateEroare, EroareCerere } from "./errors.js"
 export type {
 	CodRefuzSursa,
 	StatusDocument,
+	StatusImagine,
 	TipVerificare,
+	UnghiImagine,
 	Vehicul,
+	WebhookAsigurareSchimbare,
 	WebhookDocumentExpira,
+	WebhookDosarEveniment,
+	WebhookDosarTermen,
+	WebhookFirmaDosar,
+	WebhookFirmaSchimbare,
+	WebhookMarcaExpira,
+	WebhookMarcaSchimbare,
 	WebhookNotificare,
 	WebhookRezultat,
+	WebhookTermenExpira,
 	WebhookTest,
 } from "./schemas.js"
 
@@ -71,8 +83,9 @@ export {
 	normalizeaza,
 	normalizeazaSerieTalon,
 	TIPURI_VERIFICARE,
+	UNGHIURI_IMAGINE,
 } from "./validare.js"
-export type { CerereVerificare, VehiculNou } from "./validare.js"
+export type { CerereImagine, CerereVerificare, VehiculNou } from "./validare.js"
 
 export {
 	parseazaWebhookRezultat,

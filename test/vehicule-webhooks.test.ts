@@ -123,10 +123,10 @@ describe("webhook-uri", () => {
 
 	it("accepta notificarea cu cheia corecta, din Headers sau obiect Node", () => {
 		const cheie = "whsec_abc123"
-		const n1 = verificaWebhookNotificare(JSON.stringify(expira), new Headers({ "X-Verificrca-Key": cheie }), { cheie })
+		const n1 = verificaWebhookNotificare(JSON.stringify(expira), new Headers({ "X-Acteo-Key": cheie }), { cheie })
 		expect(n1.event).toBe("document.expira")
 
-		const n2 = verificaWebhookNotificare(Buffer.from(JSON.stringify(expira)), { "x-verificrca-key": cheie }, { cheie })
+		const n2 = verificaWebhookNotificare(Buffer.from(JSON.stringify(expira)), { "x-acteo-key": cheie }, { cheie })
 		if (n2.event !== "document.expira") throw new Error("neasteptat")
 		expect(n2.expiraLa).toBeInstanceOf(Date)
 		expect(n2.prag).toBe(14)
@@ -135,16 +135,100 @@ describe("webhook-uri", () => {
 	it("accepta evenimentul de test", () => {
 		const n = verificaWebhookNotificare(
 			{ event: "webhook.test", id: "t1", mesaj: "Test", trimisLa: "2026-09-29T10:00:00.000Z" },
-			{ "X-Verificrca-Key": "k" },
+			{ "X-Acteo-Key": "k" },
 			{ cheie: "k" },
 		)
 		expect(n.event).toBe("webhook.test")
 	})
 
 	it("respinge cheia gresita sau lipsa", () => {
-		expect(() => verificaWebhookNotificare(expira, { "x-verificrca-key": "gresit" }, { cheie: "whsec_abc" })).toThrow(
+		expect(() => verificaWebhookNotificare(expira, { "x-acteo-key": "gresit" }, { cheie: "whsec_abc" })).toThrow(
 			EroareWebhook,
 		)
-		expect(() => verificaWebhookNotificare(expira, {}, { cheie: "whsec_abc" })).toThrow(/X-Verificrca-Key/)
+		expect(() => verificaWebhookNotificare(expira, {}, { cheie: "whsec_abc" })).toThrow(/X-Acteo-Key/)
+	})
+
+	it("citeste si headerul vechi X-Verificrca-Key cand lipseste X-Acteo-Key", () => {
+		const cheie = "whsec_abc123"
+		expect(verificaWebhookNotificare(expira, { "X-Verificrca-Key": cheie }, { cheie }).event).toBe("document.expira")
+		// Headerul nou are prioritate: o cheie veche corecta nu salveaza una noua gresita.
+		expect(() =>
+			verificaWebhookNotificare(expira, { "X-Acteo-Key": "gresit", "X-Verificrca-Key": cheie }, { cheie }),
+		).toThrow(EroareWebhook)
+	})
+
+	const comun = { id: "liv_2", trimisLa: "2026-10-30T10:00:00.000Z" }
+	const evenimente = [
+		{
+			event: "dosar.eveniment",
+			...comun,
+			dosar: { id: "d1", numar: "1234/3/2024", eticheta: null },
+			eveniment: { tip: "termen_nou", descriere: "Termen nou", institutie: "Tribunalul Bucuresti" },
+		},
+		{
+			event: "dosar.termen",
+			...comun,
+			dosar: { id: "d1", numar: "1234/3/2024", eticheta: "Litigiu" },
+			sedinta: { data: "2026-11-02T00:00:00.000Z", ora: "09:00", institutie: null, complet: "C1" },
+			zileRamase: 3,
+		},
+		{
+			event: "firma.schimbare",
+			...comun,
+			firma: { id: "f1", denumire: "Exemplu SRL" },
+			schimbari: [{ camp: "platitor_tva", valoareVeche: "nu", valoareNoua: "da", dataEfect: "2026-11-01" }],
+		},
+		{
+			event: "firma.dosar",
+			...comun,
+			firma: { id: "f1", denumire: "Exemplu SRL" },
+			dosar: { numar: "99/2/2026", institutie: "Tribunalul Cluj", calitateParte: "Parat", obiect: null, categorie: null, insolventa: null },
+		},
+		{
+			event: "marca.schimbare",
+			...comun,
+			marca: { id: "m1", st13: "RO500000000000001", nume: "EXEMPLU", oficiu: "RO", numarDepozit: "M 2020 00001" },
+			schimbare: "reinnoita",
+			valoareVeche: "2026-11-01",
+			valoareNoua: "2036-11-01",
+		},
+		{
+			event: "marca.expira",
+			...comun,
+			marca: { id: "m1", st13: "EM500000000000001", nume: "EXEMPLU", oficiu: "EM", numarDepozit: "000000001" },
+			expiraLa: "2027-01-01",
+			prag: "3l",
+			reinnoirePanaLa: null,
+		},
+		{
+			event: "asigurare.schimbare",
+			...comun,
+			persoana: { id: "p1", nume: "Ion Popescu" },
+			statut: "neasigurat",
+			areCard: null,
+			verificatLa: "2026-10-30T09:00:00.000Z",
+		},
+		{
+			event: "termen.expira",
+			...comun,
+			termen: { id: "t1", categorie: "personale", tip: "pasaport", eticheta: "Pasaport", al: null, expiraLa: "2026-11-29" },
+			zileRamase: 30,
+			prag: 30,
+		},
+	] as const
+
+	it.each(evenimente.map((e) => [e.event, e] as const))("accepta evenimentul %s", (nume, corp) => {
+		const n = verificaWebhookNotificare(corp, { "x-acteo-key": "k" }, { cheie: "k" })
+		expect(n.event).toBe(nume)
+		expect(n.trimisLa).toBeInstanceOf(Date)
+	})
+
+	it("datele ISO din evenimentele noi devin Date, cele yyyy-mm-dd raman text", () => {
+		const termen = verificaWebhookNotificare(evenimente[1], { "x-acteo-key": "k" }, { cheie: "k" })
+		if (termen.event !== "dosar.termen") throw new Error("neasteptat")
+		expect(termen.sedinta.data).toBeInstanceOf(Date)
+		const marca = verificaWebhookNotificare(evenimente[5], { "x-acteo-key": "k" }, { cheie: "k" })
+		if (marca.event !== "marca.expira") throw new Error("neasteptat")
+		expect(marca.expiraLa).toBe("2027-01-01")
 	})
 })

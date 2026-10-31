@@ -88,7 +88,7 @@ const INTERVAL_IMPLICIT_MS = 3_000
 const INTERVAL_MINIM_MS = 2_000
 const TIMEOUT_IMPLICIT_MS = 5 * 60_000
 
-function limiteDin(raspuns: Raspuns): Limite | undefined {
+export function limiteDin(raspuns: Raspuns): Limite | undefined {
 	const h = raspuns.headers
 	const numar = (nume: string) => {
 		const v = h.get(nume)

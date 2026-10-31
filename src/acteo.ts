@@ -1,7 +1,8 @@
 import { ClientVehicule, creeazaRulare, PROFIL_ACTEO, type OptiuniCerere, type OptiuniClient, type Rulare } from "./client.js"
+import * as opProduse from "./internal/produse.js"
 import * as opVerificari from "./internal/verificari.js"
 import type { TipVerificare, WebhookNotificare, WebhookRezultat } from "./schemas.js"
-import { normalizeaza, type CerereVerificare } from "./validare.js"
+import { normalizeaza, type CerereImagine, type CerereVerificare } from "./validare.js"
 import { parseazaWebhookRezultat, verificaWebhookNotificare, type HeadereCerere, type OptiuniWebhookNotificare } from "./webhooks.js"
 
 const VIN_REGEX = /^[A-HJ-NPR-Z0-9]{17}$/
@@ -190,7 +191,113 @@ export type ClientRovinieta = ClientDocument<"rovinieta", IdentificatorRovinieta
 /** Copia conforma ARR. Accepta doar numarul de inmatriculare. */
 export type ClientArr = ClientDocument<"arr", string>
 
-/** Domeniul auto: documentele unei masini si flota monitorizata. */
+/** Decodarea seriei de sasiu (VIN). Cere un abonament de decodare VIN. */
+export class ClientVin {
+	readonly #ruleaza: Rulare
+
+	/** @internal */
+	constructor(ruleaza: Rulare) {
+		this.#ruleaza = ruleaza
+	}
+
+	/**
+	 * Decodeaza un VIN: marca, model, an si structura lui. Consuma din cota doar
+	 * cand marca si modelul sunt gasite (`taxat: true`).
+	 *
+	 * @param vin seria de sasiu, 17 caractere (spatiile si literele mici sunt acceptate).
+	 * @param optiuni `signal` pentru anulare.
+	 * @returns decodarea, completa, partiala sau doar structura.
+	 * @throws {@link EroareValidare} VIN invalid, local sau HTTP 400.
+	 * @throws {@link EroarePlanInactiv} lipseste abonamentul de decodare VIN.
+	 * @throws {@link EroareLimita} cota atinsa (`LIMIT_ATINS`) sau prea multe decodari fara rezultat (`PLAFON_NETAXAT`).
+	 * @example
+	 * const d = await acteo.auto.vin.decodeaza("WVWZZZ1KZBW000000")
+	 * console.log(d.marca, d.model, d.anFabricatie)
+	 */
+	decodeaza(vin: string, optiuni?: OptiuniCerere): Promise<opProduse.DecodareVin> {
+		return this.#ruleaza(opProduse.decodeazaVin(vin), optiuni)
+	}
+}
+
+/** Numerele de inmatriculare disponibile, direct de la DGPCI. Cere un abonament de numere disponibile. */
+export class ClientNumere {
+	readonly #ruleaza: Rulare
+
+	/** @internal */
+	constructor(ruleaza: Rulare) {
+		this.#ruleaza = ruleaza
+	}
+
+	/**
+	 * Verifica la DGPCI daca un numar de inmatriculare e liber. Raspunsul vine
+	 * sincron si poate dura pana la doua minute; cererea are un timeout minim
+	 * potrivit, oricat de mic e `timeoutMs` din client. Consuma din cota doar cand
+	 * DGPCI da un verdict.
+	 *
+	 * @param numar numarul complet: judetul, cifrele si trei litere, ex: `BV07ABC`.
+	 * @param optiuni `signal` pentru anulare.
+	 * @returns verdictul DGPCI.
+	 * @throws {@link EroareValidare} numar invalid sau incomplet, ori refuzat de DGPCI (`NUMAR_RESPINS`).
+	 * @throws {@link EroarePlanInactiv} lipseste abonamentul de numere disponibile.
+	 * @throws {@link EroareLimita} cota atinsa.
+	 * @throws {@link EroareServer} `OCUPAT`, `INDISPONIBIL`, `EROARE_DGPCI` sau `TIMEOUT`; cererea nu s-a taxat.
+	 * @example
+	 * const r = await acteo.auto.numere.verifica("BV07ABC")
+	 * if (r.disponibil) console.log("Numarul e liber")
+	 */
+	verifica(numar: string, optiuni?: OptiuniCerere): Promise<opProduse.NumarDisponibil> {
+		return this.#ruleaza(opProduse.verificaNumar(numar), optiuni)
+	}
+}
+
+/** Pozele de studio ale masinilor. Cere un abonament de imagini masini. */
+export class ClientImagini {
+	readonly #ruleaza: Rulare
+
+	/** @internal */
+	constructor(ruleaza: Rulare) {
+		this.#ruleaza = ruleaza
+	}
+
+	/**
+	 * Cere poza unei masini si raspunde imediat. Cu `status: "gata"` primesti poza
+	 * reala si se taxeaza; altfel primesti poza generica (masina sub husa),
+	 * netaxata. La `"in-lucru"`, cere din nou dupa `retryAfterMs` sau foloseste
+	 * {@link ClientImagini.asteapta}. Linkul din `url` expira la `expiraLa`.
+	 *
+	 * @param cerere `marca`, `model`, `an` si optional `unghi`, `umbra`.
+	 * @param optiuni `signal` pentru anulare.
+	 * @returns poza masinii sau poza generica.
+	 * @throws {@link EroareValidare} marca, model, an, unghi sau umbra invalide.
+	 * @throws {@link EroarePlanInactiv} lipseste abonamentul de imagini masini.
+	 * @throws {@link EroareLimita} cota atinsa (`LIMIT_ATINS`) sau prea multe poze generice azi (`PLAFON_NETAXAT`).
+	 * @example
+	 * const p = await acteo.auto.imagini.obtine({ marca: "Volkswagen", model: "Golf", an: 2015 })
+	 * if (p.status === "gata") afiseaza(p.url)
+	 */
+	obtine(cerere: CerereImagine, optiuni?: OptiuniCerere): Promise<opProduse.ImagineMasina> {
+		return this.#ruleaza(opProduse.imagine(cerere), optiuni)
+	}
+
+	/**
+	 * Ca {@link ClientImagini.obtine}, dar cat timp poza e `"in-lucru"` o cere din
+	 * nou, cu pauzele din `Retry-After`. Fiecare cerere intermediara e netaxata,
+	 * dar intra in plafonul zilnic de poze generice.
+	 *
+	 * @param cerere `marca`, `model`, `an` si optional `unghi`, `umbra`.
+	 * @param optiuni `timeoutMs` (implicit 2 minute) si `signal`.
+	 * @returns poza cu orice status in afara de `"in-lucru"`.
+	 * @throws {@link EroareTimeoutVerificare} poza nu a fost gata in `timeoutMs`.
+	 */
+	asteapta(
+		cerere: CerereImagine,
+		optiuni?: opProduse.OptiuniAsteptareImagine & OptiuniCerere,
+	): Promise<opProduse.ImagineMasina> {
+		return this.#ruleaza(opProduse.imagineAsteptata(cerere, optiuni), optiuni)
+	}
+}
+
+/** Domeniul auto: documentele unei masini, flota monitorizata, VIN, numere si poze. */
 export class ClientAuto {
 	/** Asigurarea RCA: `acteo.auto.rca.verifica("B123ABC")`. */
 	readonly rca: ClientRca
@@ -202,6 +309,12 @@ export class ClientAuto {
 	readonly arr: ClientArr
 	/** Vehiculele monitorizate din cont: `lista()`, `adauga()`, `sterge()`. */
 	readonly flota: ClientVehicule
+	/** Decodarea VIN: `acteo.auto.vin.decodeaza("WVWZZZ1KZBW000000")`. */
+	readonly vin: ClientVin
+	/** Numere disponibile la DGPCI: `acteo.auto.numere.verifica("BV07ABC")`. */
+	readonly numere: ClientNumere
+	/** Pozele masinilor: `acteo.auto.imagini.obtine({ marca, model, an })`. */
+	readonly imagini: ClientImagini
 
 	/** @internal */
 	constructor(ruleaza: Rulare) {
@@ -210,6 +323,9 @@ export class ClientAuto {
 		this.rovinieta = new ClientDocument(ruleaza, MAPARE_ROVINIETA)
 		this.arr = new ClientDocument(ruleaza, MAPARE_ARR)
 		this.flota = new ClientVehicule(ruleaza)
+		this.vin = new ClientVin(ruleaza)
+		this.numere = new ClientNumere(ruleaza)
+		this.imagini = new ClientImagini(ruleaza)
 	}
 }
 
@@ -227,7 +343,8 @@ export class ClientWebhooks {
 	}
 
 	/**
-	 * Verifica cheia si corpul unui webhook de notificare (ex: `document.expira`).
+	 * Verifica cheia si corpul unui webhook de notificare (`document.expira`,
+	 * evenimentele celorlalte servicii sau `webhook.test`).
 	 *
 	 * @param corp corpul cererii.
 	 * @param headers headerele cererii.
@@ -242,8 +359,8 @@ export class ClientWebhooks {
 
 /**
  * Clientul API-ului Acteo, organizat pe domenii: `acteo.auto.rca`,
- * `acteo.auto.itp`, `acteo.auto.rovinieta`, `acteo.auto.arr`, `acteo.auto.flota`
- * si `acteo.webhooks`.
+ * `acteo.auto.itp`, `acteo.auto.rovinieta`, `acteo.auto.arr`, `acteo.auto.flota`,
+ * `acteo.auto.vin`, `acteo.auto.numere`, `acteo.auto.imagini` si `acteo.webhooks`.
  *
  * Toate metodele intorc `Promise` si arunca subclase de {@link VerificRcaError}.
  * Erorile trecatoare sunt reincercate automat, fara sa repete vreodata o
@@ -257,7 +374,7 @@ export class ClientWebhooks {
  * console.log(rca.status, rca.expiresAt)
  */
 export class Acteo {
-	/** Documentele unei masini (RCA, ITP, rovinieta, ARR) si flota. */
+	/** Documentele unei masini (RCA, ITP, rovinieta, ARR), flota, VIN, numere si poze. */
 	readonly auto: ClientAuto
 	/** Citirea webhook-urilor. */
 	readonly webhooks: ClientWebhooks

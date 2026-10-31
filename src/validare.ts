@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 import { EroareValidare } from "./errors.js"
-import type { TipVerificare } from "./schemas.js"
+import type { TipVerificare, UnghiImagine } from "./schemas.js"
 
 // Aceleasi reguli ca prevalidarea din API. O cerere pe care sursa oficiala ar
 // refuza-o oricum e oprita aici: nu pleaca pe retea si nu consuma din cota.
@@ -12,6 +12,8 @@ const NUMAR_REGEX = new RegExp(
 	`^(B\\d{2,3}[A-Z]{2,3}|(${JUDETE})\\d{2}[A-Z]{2,3}|CD\\d{3}[A-Z]{1,3}|TC\\d{4}[A-Z]{2})$`,
 	"i",
 )
+// Numerele verificate la DGPCI: judet (sau B), cifrele si exact trei litere.
+const NUMAR_DGPCI_REGEX = new RegExp(`^(B\\d{2,3}|(${JUDETE})\\d{2})[A-Z]{3}$`, "i")
 const VIN_REGEX = /^[A-HJ-NPR-Z0-9]{17}$/i
 const LUNGIME_VIN = 17
 // Numarul certificatului de inmatriculare: 6-20 litere si cifre, cel putin o cifra.
@@ -289,5 +291,86 @@ export function valideazaVehiculNou(vehicul: VehiculNou): Effect.Effect<Record<s
 		...(serieNormalizata && { serieSasiu: serieNormalizata }),
 		...(serieTalon && { serieTalon }),
 		...(vehicul.arrMonitorizat !== undefined && { arrMonitorizat: vehicul.arrMonitorizat }),
+	})
+}
+
+// ─── Produsele cu raspuns sincron ────────────────────────────────────────────
+
+/** VIN-ul pentru decodare, normalizat, sau eroarea de format. */
+export function valideazaVinDecodare(vin: string): Effect.Effect<string, EroareValidare> {
+	const n = normalizeaza(typeof vin === "string" ? vin : "")
+	return VIN_REGEX.test(n) ? Effect.succeed(n) : Effect.fail(eroare(explicaVin(n), "vin"))
+}
+
+/** Numarul pentru DGPCI, normalizat, sau eroarea de format. */
+export function valideazaNumarDisponibil(numar: string): Effect.Effect<string, EroareValidare> {
+	const brut = typeof numar === "string" ? numar : ""
+	if (/[?*]/.test(brut)) return Effect.fail(eroare("API-ul verifica un singur numar complet, fara `?` sau `*`.", "numar"))
+	const n = normalizeaza(brut)
+	if (!n) return Effect.fail(eroare("Lipseste numarul de inmatriculare.", "numar"))
+	return NUMAR_DGPCI_REGEX.test(n)
+		? Effect.succeed(n)
+		: Effect.fail(eroare(`Numarul ${n} nu e complet: trimite indicativul judetului, cifrele si trei litere (ex: BV07ABC).`, "numar"))
+}
+
+/** Unghiurile acceptate pentru poza unei masini. */
+export const UNGHIURI_IMAGINE: readonly UnghiImagine[] = [
+	"trei-sferturi",
+	"fata",
+	"profil",
+	"spate",
+	"trei-sferturi-dreapta",
+	"profil-dreapta",
+]
+
+/** Masina pentru care ceri poza. */
+export interface CerereImagine {
+	/** Marca, ca in talon sau RAR, ex: `Volkswagen`. */
+	readonly marca: string
+	/** Modelul, ex: `Golf`. */
+	readonly model: string
+	/** Anul fabricatiei (1950 - anul viitor); alege generatia. */
+	readonly an: number
+	/** Unghiul pozei. Implicit `"trei-sferturi"`. */
+	readonly unghi?: UnghiImagine
+	/** Umbra sub masina. Implicit `true`. */
+	readonly umbra?: boolean
+}
+
+const TEXT_MASINA_REGEX = /^[\p{L}\p{N} ./+&'()-]+$/u
+
+function valideazaTextMasina(valoare: unknown, camp: "marca" | "model"): string | EroareValidare {
+	if (typeof valoare !== "string") return eroare(`Trimite \`${camp}\` ca text.`, camp)
+	const t = valoare.trim()
+	if (!t) return eroare(`\`${camp}\` nu poate fi gol.`, camp)
+	if (t.length > 66) return eroare(`\`${camp}\` are cel mult 66 de caractere.`, camp)
+	if (!TEXT_MASINA_REGEX.test(t)) {
+		return eroare(`\`${camp}\` poate contine doar litere, cifre, spatii si . / + & ' ( ) -`, camp)
+	}
+	return t
+}
+
+/** Corpul cererii de poza, validat ca in API. */
+export function valideazaCerereImagine(cerere: CerereImagine): Effect.Effect<Record<string, unknown>, EroareValidare> {
+	const marca = valideazaTextMasina(cerere?.marca, "marca")
+	if (marca instanceof EroareValidare) return Effect.fail(marca)
+	const model = valideazaTextMasina(cerere.model, "model")
+	if (model instanceof EroareValidare) return Effect.fail(model)
+	const anMaxim = new Date().getFullYear() + 1
+	if (!Number.isInteger(cerere.an) || cerere.an < 1950 || cerere.an > anMaxim) {
+		return Effect.fail(eroare(`\`an\` trebuie sa fie un numar intreg intre 1950 si ${anMaxim}.`, "an"))
+	}
+	if (cerere.unghi !== undefined && !UNGHIURI_IMAGINE.includes(cerere.unghi)) {
+		return Effect.fail(eroare(`\`unghi\` poate fi: ${UNGHIURI_IMAGINE.join(", ")}.`, "unghi", UNGHIURI_IMAGINE))
+	}
+	if (cerere.umbra !== undefined && typeof cerere.umbra !== "boolean") {
+		return Effect.fail(eroare("Trimite `umbra` ca true sau false.", "umbra"))
+	}
+	return Effect.succeed({
+		marca,
+		model,
+		an: cerere.an,
+		...(cerere.unghi !== undefined && { unghi: cerere.unghi }),
+		...(cerere.umbra !== undefined && { umbra: cerere.umbra }),
 	})
 }

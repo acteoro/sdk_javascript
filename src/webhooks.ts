@@ -7,10 +7,12 @@ import {
 	type WebhookRezultat,
 } from "./schemas.js"
 
-/** Headerul cu cheia de webhook a contului (`whsec_...`). */
-export const HEADER_CHEIE_WEBHOOK = "x-verificrca-key"
-/** Headerul cu numele evenimentului (`document.expira`, `webhook.test`). */
-export const HEADER_EVENIMENT_WEBHOOK = "x-verificrca-event"
+/** Headerul cu cheia de webhook a contului. */
+export const HEADER_CHEIE_WEBHOOK = "x-acteo-key"
+/** Headerul cu numele evenimentului (`document.expira`, `webhook.test` etc.). */
+export const HEADER_EVENIMENT_WEBHOOK = "x-acteo-event"
+// Numele vechi ale headerelor, citite doar cand lipsesc cele noi.
+const HEADER_CHEIE_WEBHOOK_VECHI = "x-verificrca-key"
 
 /** Headerele unei cereri, fie `Headers` (fetch, Next.js), fie obiectul din Node/Express. */
 export type HeadereCerere = Headers | Readonly<Record<string, string | readonly string[] | undefined>>
@@ -93,10 +95,12 @@ export interface OptiuniWebhookNotificare {
 }
 
 /**
- * Verifica si citeste o notificare de expirare (`document.expira`) sau un test
- * (`webhook.test`) trimise la URL-ul de webhook al contului.
+ * Verifica si citeste o notificare trimisa la URL-ul de webhook al contului:
+ * expirarea unui document (`document.expira`), evenimentele celorlalte
+ * servicii (`dosar.*`, `firma.*`, `marca.*`, `asigurare.schimbare`,
+ * `termen.expira`) sau testul din dashboard (`webhook.test`).
  *
- * Cheia vine in clar in headerul `X-Verificrca-Key` si e comparata in timp
+ * Cheia vine in clar in headerul `X-Acteo-Key` si e comparata in timp
  * constant cu cea din dashboard. Pastreaza URL-ul pe HTTPS.
  *
  * @param corp corpul cererii: string, Buffer/Uint8Array sau obiect deja parsat.
@@ -106,7 +110,7 @@ export interface OptiuniWebhookNotificare {
  * @throws {@link EroareWebhook} cheia lipseste din optiuni (`CHEIE_NECONFIGURATA`), din header sau nu se
  *   potriveste (`CHEIE_INVALIDA`), ori payloadul e invalid (`JSON_INVALID`, `PAYLOAD_INVALID`).
  * @example
- * const ev = verificaWebhookNotificare(req.body, req.headers, { cheie: process.env.VERIFICRCA_WEBHOOK_KEY! })
+ * const ev = verificaWebhookNotificare(req.body, req.headers, { cheie: process.env.ACTEO_WEBHOOK_KEY! })
  * if (ev.event === "document.expira") {
  *   console.log(`${ev.vehicul.numarInmatriculare}: ${ev.document} expira in ${ev.zileRamase} zile`)
  * }
@@ -121,10 +125,10 @@ export function verificaWebhookNotificare(
 			if (!optiuni.cheie) {
 				return yield* Effect.fail(new EroareWebhook({ message: "Lipseste cheia de webhook din optiuni.", cod: "CHEIE_NECONFIGURATA" }))
 			}
-			const primita = citesteHeader(headers, HEADER_CHEIE_WEBHOOK)
+			const primita = citesteHeader(headers, HEADER_CHEIE_WEBHOOK) ?? citesteHeader(headers, HEADER_CHEIE_WEBHOOK_VECHI)
 			if (!primita || !egaleConstant(primita, optiuni.cheie)) {
 				return yield* Effect.fail(
-					new EroareWebhook({ message: "Cheia din headerul X-Verificrca-Key lipseste sau nu se potriveste.", cod: "CHEIE_INVALIDA" }),
+					new EroareWebhook({ message: "Cheia din headerul X-Acteo-Key lipseste sau nu se potriveste.", cod: "CHEIE_INVALIDA" }),
 				)
 			}
 			const json = yield* parseazaCorp(corp)
